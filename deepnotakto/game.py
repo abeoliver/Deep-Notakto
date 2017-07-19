@@ -8,6 +8,7 @@ from copy import copy
 class Board (object):
     def __init__(self, size):
         self.size = size
+        self.shape = (self.size, self.size)
         self.board = np.zeros([size, size], dtype = np.int32)
     
     def __str__(self):
@@ -28,6 +29,9 @@ class Board (object):
         else:
             self.board[row, col] = 1
             return True
+    
+    def play_piece_matrix(self, matrix):
+        self.board = np.add(self.board, matrix)
 
     def play_hvh(self):
         b = copy(self.board)
@@ -57,8 +61,21 @@ class Board (object):
                 print("Please enter ")
         print("GAME OVER! Player {} Wins!".format(1 if turn % 2 == 0 else 2))
     
-    def play_hvc(self):
-        
+    def play_cvc(self, p1, p2, display = False):
+        done = False
+        turn = 0
+        while not done:
+            print(turn)
+            if turn % 2 == 0:
+                self.play_piece_matrix(p1.play(self.board))
+            else:
+                self.play_piece_matrix(p2.play(self.board))
+            turn += 1
+            if display:
+                self.display()
+            done = self.is_over()
+        if display:
+            print("Player {} Wins!".format(1 if turn % 2 == 0 else 2))
 
     def is_over(self):
         b = copy(self.board)
@@ -81,3 +98,6 @@ class Board (object):
             return True
         # Otherwise game is not over
         return False
+    
+    def flatten(self):
+        return np.reshape(self.board, -1)
