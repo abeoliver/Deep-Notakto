@@ -2,7 +2,7 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
-from numpy import reshape, int32
+from numpy import reshape
 
 class Agent (object):
     def __init__(self):
@@ -14,4 +14,7 @@ class Agent (object):
         pass
     
     def flatten(self, state):
-        return int32(reshape(state, -1))
+        return reshape(state, -1)
+    
+    def train(self, states, targets):
+        pass

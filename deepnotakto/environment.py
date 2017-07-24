@@ -14,8 +14,14 @@ class Env (object):
         """
         self.size = size
         self.shape = (size, size)
+        self.reset()
+    
+    def reset(self):
+        """Reset board"""
         self.board = np.zeros(self.shape, dtype = np.int32)
         self.turn = 0
+        self._end_episode = False
+        self._end_training = False
     
     def observe(self):
         """The observe step of the reinforcement learning pipeline"""
@@ -32,21 +38,14 @@ class Env (object):
         new_board = np.add(self.board, action)
         # If illegal move, highly negative reward
         if np.max(new_board) > 1:
+            self._end_episode = True
             return -1000
         # Rewards based on winner
         winner = self.is_over(new_board)
         if winner == 0:
             return 0
-        elif winner == 1:
-            if self.turn % 2 == 0:
-                return 100
-            else:
-                return -100
-        elif winner == 2:
-            if self.turn % 2 == 1:
-                return 100
-            else:
-                return -100
+        else:
+            return -100
         
     def act(self, action):
         """
@@ -69,7 +68,7 @@ class Env (object):
     
     def is_over(self, board = None):
         """Checks if game is over"""
-        if board == None:
+        if board != np.ndarray:
             b = copy(self.board)
         else:
             b = copy(board)
@@ -94,6 +93,56 @@ class Env (object):
         # Otherwise game is not over
         return 0
     
+    def forced(self):
+        """Is a loss forced on the next turn"""
+        b = np.reshape(copy(self.board), -1)
+        # Calculate possible moves for opponent
+        remaining = []
+        for i in range(b.size):
+            if b[i] == 0:
+                x = copy(b)
+                x[i] = 1
+                remaining.append(x)
+        # If all are losses, a loss is forced
+        for r in remaining:
+            if self.is_over(np.reshape(r, self.shape)) == 0:
+                return False
+        return True
+    
+    def train(self, a1, a2, episodes, display = False, rotate_player_one = False):
+        """
+        Train two agents over a given number of episodes
+        Parameters:
+            a1 (Agent) - An agent to train
+            a2 (Agent) - An agent to train
+            episodes (int) - Number of episodes to train over
+            display (bool) - Passed to play function for game output
+            rotate_player_one (bool) - Should first turn be rotated
+        """
+        if not display:
+            print("Training .", end = "")
+        display_interval = episodes // 20 if episodes >= 20 else 1
+        for i in range(episodes):
+            # Reset board
+            self.reset()
+            # Play game
+            self.play(a1, a2, display = display)
+            # Quit if needed
+            if self._end_training:
+                print()
+                print("Training ended by a human agent")
+                return None
+            # Display status
+            if not display:
+                if i % display_interval == 0:
+                    print(".", end = "")
+            # Rotate players if needed
+            if rotate_player_one:
+                a1, a2 = a2, a1
+        if not display:
+            print(" Done")
+            
+    
     def __str__(self):
         """Conversion to string"""
         print()
@@ -108,7 +157,7 @@ class Env (object):
         self.__str__()
         print()
         
-    def play_cvc(self, a1, a2, display = False):
+    def play(self, a1, a2, display = False):
         """
         Plays two agents against eachother
         Parameters:
@@ -125,7 +174,7 @@ class Env (object):
         # Has the last turn been missed because of an illegal move
         last_missed = False
         # Main game loop
-        while not done:
+        while not done and not self._end_episode:
             # Copy the board for later comparison pre and post move
             b_copy = copy(self.board) 
             if display:
@@ -158,71 +207,3 @@ class Env (object):
             done = False if self.is_over() == 0 else True
         if display:
             print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-
-    def play_hvh(self):
-        """
-        Play two humans against eachother
-        Note:
-            "exit" as input ends the game
-        """
-        b = copy(self.board)
-        done = False
-        self.display()
-        while not done:
-            print("Player {}".format(1 if self.turn % 2 == 0 else 2))
-            row, col = self.human_turn()
-            self.board[row, col] = 1
-            self.turn += 1
-            self.display()
-            done = True if self.is_over() else False
-        print("GAME OVER! Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-            
-    def play_hvc(self, agent, human_player_one = True):
-        """
-        Play a human against a given computer agent
-        Note:
-            "exit" as input ends the game
-        """
-        def human():
-            print("Player {}".format(1 if self.turn % 2 == 0 else 2))
-            move = self.human_turn()
-            if move == False:
-                return False
-            self.board[move[0], move[1]] = 1
-            return True
-        b = copy(self.board)
-        done = False
-        self.display()
-        while not done:
-            # Play the agent corresponding to the current turn
-            if self.turn % 2 == 0 and not human_player_one:
-                agent.act(self)
-            elif self.turn % 2 == 0 and human_player_one:
-                if not human():
-                    return False
-            elif human_player_one:
-                agent.act(self)
-            else:
-                if not human():
-                    return False
-            self.turn += 1
-            self.display()
-            done = True if self.is_over() else False
-        print("GAME OVER! Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-    
-    def human_turn(self):
-        """Make a human move"""
-        while True:
-            inp = input("Next Piece: ")
-            if inp == "exit":
-                return False
-            if len(inp) != 3:
-                print("Please enter valid position")
-                continue
-            row, col = [int(i) for i in inp.split()]
-            row = int(row) - 1
-            col = int(col) - 1
-            if row < 0 or col < 0 or row >= self.size or col >= self.size:
-                print("Please enter valid position")
-                continue
-            return [row, col]
