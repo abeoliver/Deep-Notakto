@@ -20,6 +20,7 @@ class QNoHidden (Agent):
         # Call parent initializer
         super(QNoHidden, self).__init__()
         self.size = size
+        self.targets = []
         # Create a tensorflow session for all processes to run in
         self.session = tf.Session()
         # Load model if a file name is given
@@ -29,6 +30,8 @@ class QNoHidden (Agent):
         else:
             self.gamma = gamma
             self.init_model()
+        # Initialize training variables like the loss and the optimizer
+        self.init_training_vars()
         
     def act(self, env):
         """
@@ -37,46 +40,91 @@ class QNoHidden (Agent):
             env (environment.Env) - Environment of the agent
         """
         # Current environment state
-        state = env.observe()
-        self.states.append(state)
-        # Get action probabilties
-        probs = self.get_probs(state)
+        current_state = env.observe()
+        # Get action Q-vector
+        Q = self.get_Q(current_state)
+        # Get the action
+        action, action_index = self.get_action(Q, True)
+        # Apply action, add reward to reward history
+        new_state, reward = env.act(action)
+        
+        # Calculate target for training
+        # Get Q values after move is applied
+        newQ = self.get_Q(new_state)
+        # Max new Q value
+        maxQ = np.max(newQ)
+        # Update Q for target
+        Q[action_index] = reward + self.gamma * maxQ
+        
+        # Train network
+        self.train([current_state], [Q])
+        
+        # Record state, action, reward, and target
+        self.states.append(current_state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.targets.append(Q)
+    
+    def get_action(self, Q, get_index = False):
+        """
+        Creates an action vector for a given Q-vector
+        Parameters:
+            Q (N array) - Q-values for a state
+            get_index (bool) - Should return max_index or not
+        Returns:
+            if not get_index:
+                (N, M) array - An action matrix
+            else:
+                [(N, M) array, int] - Action matrix, max index
+        """
         # Make a blank action
-        action = np.zeros(probs.shape, dtype = np.int32)
+        action = np.zeros(Q.shape, dtype = np.int32)
         # Make a stochastic decision
-        max_index = np.argmax(probs)
+        max_index = np.argmax(Q)
         action[max_index] = 1
         # Add action to action history
         self.actions.append(action)
         # Reshape action for applying
-        action = np.reshape(action, state.shape)
-        # Apply action, add reward to reward history
-        self.rewards.append(env.act(action))
+        action = np.reshape(action, [self.size, self.size])
+        if get_index:
+            return (action, max_index)
+        else:
+            return action
     
-    def get_probs(self, state):
+    def get_Q(self, state):
         """
-        Get action probabilities
+        Get action Q-values
         Parameters:
             state ((N, N) array) - Current environment state
         """
-        # Pass the state to the model and get array of probabilities
+        # Pass the state to the model and get array of Q-values
         return self.y.eval(session = self.session, 
                            feed_dict = {self.x: [self.flatten(state)]})[0]
 
     def init_model(self):
         """Randomly intitialize model"""
-        s = self.size * self.size
-        self.x = tf.placeholder(tf.float32, [None, s])
-        self.w = tf.random_normal([s, s])
-        self.bias = tf.random_normal([s])
-        self.y = tf.nn.softmax(tf.matmul(self.x, self.w) + self.bias)
+        with tf.name_scope("model"):
+            s = self.size * self.size
+            self.x = tf.placeholder(tf.float32, [None, s], name = "input")
+            self.w = tf.Variable(tf.random_normal([s, s]), name = "weights")
+            self.bias = tf.Variable(tf.random_normal([s]), name = "biases")
+            self.y = tf.add(tf.matmul(self.x, self.w), self.bias, name = "output")
+            self.session.run(tf.global_variables_initializer())
     
-    def Q(self, state, action):
-        pass
+    def init_training_vars(self):
+        """Initialize training procedure"""
+        self._q_target = tf.placeholder(shape = [None, self.size * self.size], 
+                                        dtype = tf.float32)
+        self._loss = tf.reduce_sum(tf.square(self._q_target - self.y))
+        self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = .1)
+        self._update = self._optimizer.minimize(self._loss)
 
-    def train(self):
+    def train(self, states, targets):
         """
-        Trains a model
+        Trains a model over a given set of states and targets
         """
-        pass
-        
+        # Reshape states
+        states = [np.reshape(s, -1) for s in states]
+        # Run training update
+        self.session.run(self._update, 
+                         feed_dict = {self.x: states, self._q_target: targets})

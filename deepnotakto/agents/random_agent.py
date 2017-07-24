@@ -8,10 +8,14 @@ from agent import Agent
 
 class RandomAgent (Agent):
     def act(self, env):
+        state =  env.observe()
         m = zeros(env.board.shape, dtype = int32)
         r, c = [0, 0]
-        while env.board[r, c] != 0:
+        while state[r, c] != 0:
             r = randint(0, env.board.shape[0] - 1)
             c = randint(0, env.board.shape[0] - 1)
         m[r, c] = 1
-        env.act(m)
+        _, reward = env.act(m)
+        self.states.append(state)
+        self.actions.append(m)
+        self.rewards.append(reward)
