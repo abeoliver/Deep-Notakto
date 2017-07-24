@@ -18,3 +18,11 @@ class Agent (object):
     
     def train(self, states, targets):
         pass
+    
+    def save(self, name = "agent"):
+        pass
+    
+    @staticmethod
+    def load(name):
+        """Loads a model from a given file name"""
+        pass

@@ -4,10 +4,11 @@
 
 import numpy as np
 import tensorflow as tf
+from datetime import datetime
 from agent import Agent
 
 class QNoHidden (Agent):
-    def __init__(self, size, load_file_name = None, gamma = .8):
+    def __init__(self, size, load_file_name = None, gamma = .8, trainable = True):
         """
         Initializes an Q learning agent with no hidden layers for a given board size
         Parameters:
@@ -21,11 +22,12 @@ class QNoHidden (Agent):
         super(QNoHidden, self).__init__()
         self.size = size
         self.targets = []
+        self.trainable = trainable
         # Create a tensorflow session for all processes to run in
         self.session = tf.Session()
         # Load model if a file name is given
         if load_file_name != None:
-            self.load_model(load_file_name)
+            self.load(load_file_name)
         # Otherwise randomly initialize
         else:
             self.gamma = gamma
@@ -101,14 +103,24 @@ class QNoHidden (Agent):
         return self.y.eval(session = self.session, 
                            feed_dict = {self.x: [self.flatten(state)]})[0]
 
-    def init_model(self):
+    def init_model(self, w = None, b = None):
         """Randomly intitialize model"""
         with tf.name_scope("model"):
             s = self.size * self.size
             self.x = tf.placeholder(tf.float32, [None, s], name = "input")
-            self.w = tf.Variable(tf.random_normal([s, s]), name = "weights")
-            self.bias = tf.Variable(tf.random_normal([s]), name = "biases")
-            self.y = tf.add(tf.matmul(self.x, self.w), self.bias, name = "output")
+            if type(w) != np.ndarray:
+                self.w = tf.Variable(tf.random_normal([s, s]),
+                                     trainable = self.trainable,
+                                     name = "weights")
+            else:
+                self.w = tf.Variable(w, trainable = self.trainable, name = "weights")
+            if type(b) != np.ndarray:
+                self.b = tf.Variable(tf.random_normal([s]), 
+                                     trainable = self.trainable,
+                                     name = "biases")
+            else:
+                self.b = tf.Variable(b, trainable = self.trainable, name = "biases")
+            self.y = tf.add(tf.matmul(self.x, self.w), self.b, name = "output")
             self.session.run(tf.global_variables_initializer())
     
     def init_training_vars(self):
@@ -120,11 +132,26 @@ class QNoHidden (Agent):
         self._update = self._optimizer.minimize(self._loss)
 
     def train(self, states, targets):
-        """
-        Trains a model over a given set of states and targets
-        """
+        """Trains a model over a given set of states and targets"""
         # Reshape states
         states = [np.reshape(s, -1) for s in states]
         # Run training update
         self.session.run(self._update, 
                          feed_dict = {self.x: states, self._q_target: targets})
+
+    def save(self, prefix = "agents/params/"):
+        """Save the models parameters in a .npz file"""
+        today = datetime.now()
+        name = prefix + "QNoHidden_{0}_{1}_{2}_{3}_{4}.npz".format(
+            str(today.year)[2:], today.month, today.day, today.hour, today.minute)
+        with open(name, "wb") as f:
+            np.savez(f, 
+                     w = self.w.eval(session = self.session),
+                     b = self.b.eval(session = self.session))
+    
+    def load(self, name, prefix = "agents/params/"):
+        """Loads a model from a given .npz file"""
+        name = prefix + name
+        with open(name, "rb") as f:
+            loaded = np.load(f)
+            self.init_model(w = loaded["w"], b = loaded["b"])
