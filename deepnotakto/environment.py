@@ -6,14 +6,16 @@ import numpy as np
 from copy import copy
 
 class Env (object):
-    def __init__(self, size):
+    def __init__(self, size, include_forced_reward = True):
         """
         Initializes the environment
         Parameters:
             size (Int) - Side length of the board (board size = size * size)
+            include_forced_reward (bool) - Should the reward function consider forces
         """
         self.size = size
         self.shape = (size, size)
+        self.include_forced_reward = include_forced_reward
         self.reset()
     
     def reset(self):
@@ -43,6 +45,13 @@ class Env (object):
         # Rewards based on winner
         winner = self.is_over(new_board)
         if winner == 0:
+            # Positive reward for forcing a loss
+            # Not possible with three or fewer moves so don't check
+            if self.turn >= 2 and self.include_forced_reward:
+                if self.forced(new_board):
+                    return 300
+                else:
+                    return 0
             return 0
         else:
             return -100
@@ -68,11 +77,10 @@ class Env (object):
     
     def is_over(self, board = None):
         """Checks if game is over"""
-        if board != np.ndarray:
+        if type(board) != np.ndarray:
             b = copy(self.board)
         else:
             b = copy(board)
-        
         # Rows
         for row in b:
             if np.sum(row) == b.shape[0]:
@@ -93,19 +101,20 @@ class Env (object):
         # Otherwise game is not over
         return 0
     
-    def forced(self):
+    def forced(self, board = None):
         """Is a loss forced on the next turn"""
-        b = np.reshape(copy(self.board), -1)
+        if type(board) != np.ndarray:
+            b = copy(self.board)
+        else:
+            b = copy(board)
+        # If (n-1)^2 + 1 pieces are played, then garaunteed force
+        if np.sum(b) > (b.shape[0] - 1) ** 2:
+            return True
         # Calculate possible moves for opponent
-        remaining = []
-        for i in range(b.size):
-            if b[i] == 0:
-                x = copy(b)
-                x[i] = 1
-                remaining.append(x)
+        remaining = self.possible_moves(b)
         # If all are losses, a loss is forced
         for r in remaining:
-            if self.is_over(np.reshape(r, self.shape)) == 0:
+            if self.is_over(np.add(b, r)) == 0:
                 return False
         return True
     
@@ -120,28 +129,56 @@ class Env (object):
             rotate_player_one (bool) - Should first turn be rotated
         """
         if not display:
-            print("Training .", end = "")
+            print("Training ", end = "")
         display_interval = episodes // 20 if episodes >= 20 else 1
         for i in range(episodes):
             # Reset board
             self.reset()
             # Play game
-            self.play(a1, a2, display = display)
+            winner = self.play(a1, a2, display = display, training_iteration = i)
             # Quit if needed
             if self._end_training:
                 print()
                 print("Training ended by a human agent")
                 return None
+            # Give small reward for winning to winning player if reward is zero
+            if winner == 1:
+                if a1.rewards[-1] == 0:
+                    a1.rewards[-1] = 10
+            if winner == 2:
+                if a2.rewards[-1] == 0:
+                    a2.rewards[-1] = 10    
             # Display status
             if not display:
                 if i % display_interval == 0:
-                    print(".", end = "")
+                    print("*", end = "")
             # Rotate players if needed
             if rotate_player_one:
                 a1, a2 = a2, a1
         if not display:
             print(" Done")
-            
+    
+    def possible_moves(self, board = None):
+        """Returns a list of all possible moves"""
+        if type(board) != np.ndarray:
+            b = copy(self.board)
+        else:
+            b = copy(board)
+        remaining = []
+        if len(b.shape) == 2:
+            for i in range(b.shape[0]):
+                for j in range(b.shape[1]):
+                    if b[i, j] == 0:
+                        z = np.zeros(b.shape)
+                        z[i, j] = 1
+                        remaining.append(z)
+        else:
+            for i in range(b.shape[0]):
+                if b[i] == 0:
+                    z = np.zeros(b.shape)
+                    z[i] = 1
+                    remaining.append(z)
+        return remaining
     
     def __str__(self):
         """Conversion to string"""
@@ -157,13 +194,14 @@ class Env (object):
         self.__str__()
         print()
         
-    def play(self, a1, a2, display = False):
+    def play(self, a1, a2, display = False, training_iteration = None):
         """
         Plays two agents against eachother
         Parameters:
             a1 (agent.Agent) - Agent for player 1
             a2 (agent.Agent) - Agent for player 2
-            display (Bool) - Should debug print board and winner
+            display (bool) - Should debug print board and winner
+            training (int or None) - Episode number if training, None if not training 
         Note:
             Currently throws an error if both agents play an illegal move (thus not
             changing the board). This element of the system will be removed once
@@ -181,16 +219,18 @@ class Env (object):
                 print("Turn #{}".format(self.turn))
             # Play the agent corresponding to the current turn
             if self.turn % 2 == 0:
-                a1.act(self)
+                if training_iteration != None:
+                    a1.act(self, training_iteration = training_iteration)
             else:
-                a2.act(self)
+                if training_iteration != None:
+                    a2.act(self, training_iteration = training_iteration)
             # Change turn
             self.turn += 1
             if display:
                 self.display()
             
             # Catch double illegal moves
-            if np.equal(b_copy, self.board).all():
+            if np.equal(b_copy, self.board).all() and self.turn != 0:
                 if display:
                     print("Player attempted illegal move")
                 # If a move was not made, but the previous one was
@@ -207,3 +247,5 @@ class Env (object):
             done = False if self.is_over() == 0 else True
         if display:
             print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
+        # Return winner
+        return (1 if self.turn % 2 == 0 else 2) if self.is_over() != 0 else 0

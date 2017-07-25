@@ -1,20 +1,24 @@
-# q_no_hidden.py
+# Q.py
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
 import numpy as np
 import tensorflow as tf
+from random import choice
 from datetime import datetime
 from agent import Agent
 
-class QNoHidden (Agent):
-    def __init__(self, size, load_file_name = None, gamma = .8, trainable = True):
+class Q (Agent):
+    def __init__(self, size, load_file_name = None, gamma = .8, trainable = True,
+                epsilon = 0.0):
         """
-        Initializes an Q learning agent with no hidden layers for a given board size
+        Initializes an Q learning agent
         Parameters:
             size (int) - Board side length
             load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter (not used if model is loaded)
+            trainable (bool) - Is the model trainable or frozen
+            epsilon (float [0, 1]) - Epsilon for e-greedy exploration (only when training)
         Note:
             Initializes randomly if no model is given
         """
@@ -23,6 +27,8 @@ class QNoHidden (Agent):
         self.size = size
         self.targets = []
         self.trainable = trainable
+        self.gamma = gamma
+        self.epsilon = epsilon
         # Create a tensorflow session for all processes to run in
         self.session = tf.Session()
         # Load model if a file name is given
@@ -30,23 +36,29 @@ class QNoHidden (Agent):
             self.load(load_file_name)
         # Otherwise randomly initialize
         else:
-            self.gamma = gamma
             self.init_model()
         # Initialize training variables like the loss and the optimizer
         self.init_training_vars()
         
-    def act(self, env):
+    def act(self, env, training_iteration = None, **kwargs):
         """
         Choose action, apply action to environment, and recieve reward
         Parameters:
             env (environment.Env) - Environment of the agent
+            training_iteration (int) - If model is training, which iteration for e-greedy
         """
         # Current environment state
         current_state = env.observe()
         # Get action Q-vector
         Q = self.get_Q(current_state)
         # Get the action
-        action, action_index = self.get_action(Q, True)
+        # Use e-greedy exploration for added noise
+        if np.random.rand(1) < self.epsilon:
+            action = choice(env.possible_moves(np.reshape(current_state, -1)))
+            action_index = np.argmax(action)
+            action = np.reshape(action, env.shape)
+        else:
+            action, action_index = self.get_action(Q, True)
         # Apply action, add reward to reward history
         new_state, reward = env.act(action)
         
@@ -66,6 +78,14 @@ class QNoHidden (Agent):
         self.actions.append(action)
         self.rewards.append(reward)
         self.targets.append(Q)
+        
+        # Change epsilon if training
+        if training_iteration != None:
+            self.change_epsilon(training_iteration)
+    
+    def change_epsilon(self, episode):
+        """Changes the epsilon for e-greedy exploration as a function of episode number"""
+        self.epsilon = 1.0 / (episode + 1)
     
     def get_action(self, Q, get_index = False):
         """
@@ -125,19 +145,53 @@ class QNoHidden (Agent):
     
     def init_training_vars(self):
         """Initialize training procedure"""
-        self._q_target = tf.placeholder(shape = [None, self.size * self.size], 
-                                        dtype = tf.float32)
-        self._loss = tf.reduce_sum(tf.square(self._q_target - self.y))
+        self._q_targets = tf.placeholder(shape = [None, self.size * self.size], 
+                                         dtype = tf.float32)
+        self._loss = tf.reduce_sum(tf.square(self._q_targets - self.y))
         self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = .1)
         self._update = self._optimizer.minimize(self._loss)
 
     def train(self, states, targets):
         """Trains a model over a given set of states and targets"""
-        # Reshape states
-        states = [np.reshape(s, -1) for s in states]
+        # Reshape
+        states = np.array([np.reshape(s, -1) for s in states])
+        targets = np.array([np.reshape(t, -1) for t in targets])
         # Run training update
         self.session.run(self._update, 
-                         feed_dict = {self.x: states, self._q_target: targets})
+                         feed_dict = {self.x: states, self._q_targets: targets})
+    
+    def train_rotate(self, states, targets, save = True):
+        """Train over the rotated versions of each state and reward"""
+        # Reshape targets for rotation
+        targets = [np.reshape(t, states[0].shape) for t in targets]
+        # Collect rotated versions of each state and target
+        newStates = []
+        newTargets = []
+        for s, t in zip(states, targets):
+            ns = s
+            nt = t
+            for i in range(3):
+                rs = self.rotate(ns)
+                rt = self.rotate(nt)
+                newStates.append(rs)
+                newTargets.append(np.reshape(rt, -1))
+                ns = rs
+                nt = rt
+        # Combine lists
+        allStates = states + newStates
+        allTargets = targets + newTargets
+        if save:
+            self.states.extend(newStates)
+            self.targets.extend(newTargets)        
+        # Train
+        self.train(allStates, allTargets)
+    
+    def rotate(self, x):
+        """Rotates an array counter-clockwise"""
+        n = np.zeros(x.shape)
+        for i in range(x.shape[0]):
+            n[:, i] = x[i][::-1]
+        return n
 
     def save(self, prefix = "agents/params/"):
         """Save the models parameters in a .npz file"""

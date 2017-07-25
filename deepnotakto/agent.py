@@ -10,7 +10,7 @@ class Agent (object):
         self.actions = []
         self.rewards = []
     
-    def act(self, env):
+    def act(self, env, **kwargs):
         pass
     
     def flatten(self, state):

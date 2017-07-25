@@ -8,13 +8,11 @@ from agent import Agent
 
 class Human (Agent):
     def __init__(self):
-        """
-        Initializes a human agent
-        """
+        """Initializes a human agent"""
         # Call parent initializer
         super(Human, self).__init__()
     
-    def act(self, env):
+    def act(self, env, **kwargs):
         """Choose and action and apply to environment"""
         move = self.get_turn(env)
         if move == False:
@@ -23,7 +21,9 @@ class Human (Agent):
             return None
         zeros = np.zeros(env.shape)
         zeros[move[0], move[1]] = 1
-        env.act(zeros)
+        state, reward = env.act(zeros)
+        self.states.append(state)
+        self.rewards.append(reward)
     
     def get_turn(self, env):
         """Get turn input"""

@@ -7,7 +7,7 @@ from random import randint
 from agent import Agent
 
 class RandomAgent (Agent):
-    def act(self, env):
+    def act(self, env, **kwargs):
         state =  env.observe()
         m = zeros(env.board.shape, dtype = int32)
         r, c = [0, 0]
