@@ -49,12 +49,12 @@ class Env (object):
             # Not possible with three or fewer moves so don't check
             if self.turn >= 2 and self.include_forced_reward:
                 if self.forced(new_board):
-                    return 300
+                    return 800
                 else:
                     return 0
             return 0
         else:
-            return -100
+            return -500
         
     def act(self, action):
         """
@@ -118,7 +118,8 @@ class Env (object):
                 return False
         return True
     
-    def train(self, a1, a2, episodes, display = False, rotate_player_one = False):
+    def train(self, a1, a2, episodes, display = False, rotate_player_one = False,
+             learn_rate = .01):
         """
         Train two agents over a given number of episodes
         Parameters:
@@ -127,6 +128,7 @@ class Env (object):
             episodes (int) - Number of episodes to train over
             display (bool) - Passed to play function for game output
             rotate_player_one (bool) - Should first turn be rotated
+            learn_rate (float) - Learning rate for training
         """
         if not display:
             print("Training ", end = "")
@@ -135,7 +137,8 @@ class Env (object):
             # Reset board
             self.reset()
             # Play game
-            winner = self.play(a1, a2, display = display, training_iteration = i)
+            winner = self.play(a1, a2, display = display, training_iteration = i,
+                              learn_rate = learn_rate)
             # Quit if needed
             if self._end_training:
                 print()
@@ -144,10 +147,10 @@ class Env (object):
             # Give small reward for winning to winning player if reward is zero
             if winner == 1:
                 if a1.rewards[-1] == 0:
-                    a1.rewards[-1] = 10
+                    a1.rewards[-1] = 200
             if winner == 2:
                 if a2.rewards[-1] == 0:
-                    a2.rewards[-1] = 10    
+                    a2.rewards[-1] = 200    
             # Display status
             if not display:
                 if i % display_interval == 0:
@@ -194,14 +197,15 @@ class Env (object):
         self.__str__()
         print()
         
-    def play(self, a1, a2, display = False, training_iteration = None):
+    def play(self, a1, a2, display = False, training_iteration = None, learn_rate = .01):
         """
         Plays two agents against eachother
         Parameters:
             a1 (agent.Agent) - Agent for player 1
             a2 (agent.Agent) - Agent for player 2
             display (bool) - Should debug print board and winner
-            training (int or None) - Episode number if training, None if not training 
+            training (int or None) - Episode number if training, None if not training
+            learn_rate (float) - Learn rate for training, unused if not training
         Note:
             Currently throws an error if both agents play an illegal move (thus not
             changing the board). This element of the system will be removed once
@@ -212,6 +216,8 @@ class Env (object):
         # Has the last turn been missed because of an illegal move
         last_missed = False
         # Main game loop
+        if display:
+                self.display()
         while not done and not self._end_episode:
             # Copy the board for later comparison pre and post move
             b_copy = copy(self.board) 
@@ -220,10 +226,16 @@ class Env (object):
             # Play the agent corresponding to the current turn
             if self.turn % 2 == 0:
                 if training_iteration != None:
-                    a1.act(self, training_iteration = training_iteration)
+                    a1.act(self, training_iteration = training_iteration,
+                          training = True, learn_rate = learn_rate)
+                else:
+                    a1.act(self)
             else:
                 if training_iteration != None:
-                    a2.act(self, training_iteration = training_iteration)
+                    a2.act(self, training_iteration = training_iteration,
+                          training = True, learn_rate = learn_rate)
+                else:
+                    a1.act(self)
             # Change turn
             self.turn += 1
             if display:
@@ -246,6 +258,8 @@ class Env (object):
             # End the loop if game is over
             done = False if self.is_over() == 0 else True
         if display:
+            if display:
+                self.display()
             print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
         # Return winner
         return (1 if self.turn % 2 == 0 else 2) if self.is_over() != 0 else 0
