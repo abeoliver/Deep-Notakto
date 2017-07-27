@@ -9,7 +9,7 @@ from datetime import datetime
 from agent import Agent
 
 class Q (Agent):
-    def __init__(self, size, load_file_name = None, gamma = .8, trainable = True,
+    def __init__(self, layers, load_file_name = None, gamma = .8, trainable = True,
                 epsilon = 0.0):
         """
         Initializes an Q learning agent
@@ -23,8 +23,9 @@ class Q (Agent):
             Initializes randomly if no model is given
         """
         # Call parent initializer
-        super(QNoHidden, self).__init__()
-        self.size = size
+        super(Q, self).__init__()
+        self.layers = layers
+        self.size = np.int32(np.sqrt(layers[0]))
         self.targets = []
         self.trainable = trainable
         self.gamma = gamma
@@ -128,28 +129,40 @@ class Q (Agent):
         with tf.name_scope("model"):
             s = self.size * self.size
             self.x = tf.placeholder(tf.float32, [None, s], name = "input")
-            if type(w) != np.ndarray:
-                self.w = tf.Variable(tf.random_normal([s, s]),
-                                     trainable = self.trainable,
-                                     name = "weights")
+            if type(w) != list:
+                self.w = [tf.Variable(tf.random_normal([self.layers[n], self.layers[n + 1]]),
+                                      trainable = self.trainable, name = "weights_{}".format(n))
+                          for n in range(len(self.layers) - 1)]
             else:
-                self.w = tf.Variable(w, trainable = self.trainable, name = "weights")
-            if type(b) != np.ndarray:
-                self.b = tf.Variable(tf.random_normal([s]), 
-                                     trainable = self.trainable,
-                                     name = "biases")
+                self.w = [tf.Variable(weight, trainable = self.trainable, name = "weights_{}".format(n))
+                          for n, weight in enumerate(w)]
+            if type(b) != list:
+                self.b = [tf.Variable(tf.random_normal([1, self.layers[n + 1]]),
+                                      trainable = self.trainable, name = "biases_{}".format(n))
+                          for n in range(len(self.layers) - 1)]
             else:
-                self.b = tf.Variable(b, trainable = self.trainable, name = "biases")
-            self.y = tf.add(tf.matmul(self.x, self.w), self.b, name = "output")
+                self.b = [tf.Variable(bias, trainable = self.trainable, name = "biases_{}".format(n))
+                          for n, bias in enumerate(b)]
+            # Predicted output
+            def feed(inp, n=0):
+                """Recursive function for feeding a vector through layers"""
+                # End recursion
+                if n == len(self.layers) - 2:
+                    # Minus 2 because final layer does no math (-1) and the lists start at zero (-1)
+                    return tf.matmul(inp, self.w[n], name = "feedmul{0}".format(n)) + self.b[n]
+                # Continue recursion
+                return feed(tf.matmul(inp, self.w[n], name = "feedmul{0}".format(n)) + self.b[n], n + 1)
+            self.y = feed(self.x)
             self.session.run(tf.global_variables_initializer())
     
     def init_training_vars(self):
         """Initialize training procedure"""
-        self._q_targets = tf.placeholder(shape = [None, self.size * self.size], 
-                                         dtype = tf.float32)
-        self._loss = tf.reduce_sum(tf.square(self._q_targets - self.y))
-        self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = .1)
-        self._update = self._optimizer.minimize(self._loss)
+        with tf.name_scope("training"):
+            self._q_targets = tf.placeholder(shape = [None, self.size * self.size], 
+                                             dtype = tf.float32, name = "targets")
+            self._loss = tf.reduce_sum(tf.square(self._q_targets - self.y), name = "loss")
+            self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = .1, name = "optimizer")
+            self._update = self._optimizer.minimize(self._loss, name = "update")
 
     def train(self, states, targets):
         """Trains a model over a given set of states and targets"""
@@ -167,6 +180,7 @@ class Q (Agent):
         # Collect rotated versions of each state and target
         newStates = []
         newTargets = []
+        print("Rotating ... ", end = "")
         for s, t in zip(states, targets):
             ns = s
             nt = t
@@ -177,6 +191,7 @@ class Q (Agent):
                 newTargets.append(np.reshape(rt, -1))
                 ns = rs
                 nt = rt
+        print("Done")
         # Combine lists
         allStates = states + newStates
         allTargets = targets + newTargets
@@ -184,7 +199,9 @@ class Q (Agent):
             self.states.extend(newStates)
             self.targets.extend(newTargets)        
         # Train
+        print("Training ... ", end = "")
         self.train(allStates, allTargets)
+        print("Done")
     
     def rotate(self, x):
         """Rotates an array counter-clockwise"""
@@ -193,19 +210,27 @@ class Q (Agent):
             n[:, i] = x[i][::-1]
         return n
 
-    def save(self, prefix = "agents/params/"):
-        """Save the models parameters in a .npz file"""
+    def save(self, name = None, prefix = "agents/params/"):
+        """
+        Save the models parameters in a .npz file
+        Parameters:
+            name (string) - File name for save file
+            prefix (string) - The file path prefix
+        """
         today = datetime.now()
-        name = prefix + "QNoHidden_{0}_{1}_{2}_{3}_{4}.npz".format(
-            str(today.year)[2:], today.month, today.day, today.hour, today.minute)
+        if not name:
+            name = prefix + "Q({0})_{1}_{2}_{3}_{4}_{5}.npz".format(
+                self.layers, str(today.year)[2:], today.month, today.day, today.hour, today.minute)
         with open(name, "wb") as f:
             np.savez(f, 
-                     w = self.w.eval(session = self.session),
-                     b = self.b.eval(session = self.session))
+                     w = [w.eval(session = self.session) for w in self.w],
+                     b = [b.eval(session = self.session) for b in self.b])
     
-    def load(self, name, prefix = "agents/params/"):
+    def load(self, name, prefix = "agents/params/", trainable = False):
         """Loads a model from a given .npz file"""
         name = prefix + name
         with open(name, "rb") as f:
             loaded = np.load(f)
+            self.trainable = trainable
+            print(loaded["w"])
             self.init_model(w = loaded["w"], b = loaded["b"])
