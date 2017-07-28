@@ -6,7 +6,7 @@ import numpy as np
 from copy import copy
 
 class Env (object):
-    def __init__(self, size, include_forced_reward = True):
+    def __init__(self, size, include_forced_reward = True, win_reward = 20):
         """
         Initializes the environment
         Parameters:
@@ -16,6 +16,7 @@ class Env (object):
         self.size = size
         self.shape = (size, size)
         self.include_forced_reward = include_forced_reward
+        self.win_reward = win_reward
         self.reset()
     
     def reset(self):
@@ -41,7 +42,7 @@ class Env (object):
         # If illegal move, highly negative reward
         if np.max(new_board) > 1:
             self._end_episode = True
-            return -1000
+            return -10
         # Rewards based on winner
         winner = self.is_over(new_board)
         if winner == 0:
@@ -49,12 +50,12 @@ class Env (object):
             # Not possible with three or fewer moves so don't check
             if self.turn >= 2 and self.include_forced_reward:
                 if self.forced(new_board):
-                    return 800
+                    return 8
                 else:
                     return 0
             return 0
         else:
-            return -500
+            return -5
         
     def act(self, action):
         """
@@ -119,7 +120,7 @@ class Env (object):
         return True
     
     def train(self, a1, a2, episodes, display = False, rotate_player_one = False,
-             learn_rate = .01):
+             learn_rate = .01, continuous_update = False):
         """
         Train two agents over a given number of episodes
         Parameters:
@@ -129,28 +130,29 @@ class Env (object):
             display (bool) - Passed to play function for game output
             rotate_player_one (bool) - Should first turn be rotated
             learn_rate (float) - Learning rate for training
+            continuous_update (bool) - Update model continuously or not
         """
         if not display:
             print("Training ", end = "")
-        display_interval = episodes // 20 if episodes >= 20 else 1
+        display_interval = episodes // 10 if episodes >= 10 else 1
         for i in range(episodes):
             # Reset board
             self.reset()
             # Play game
-            winner = self.play(a1, a2, display = display, training_iteration = i,
+            winner = self.play(a1, a2, display = display, training = continuous_update,
                               learn_rate = learn_rate)
             # Quit if needed
             if self._end_training:
                 print()
-                print("Training ended by a human agent")
+                print("Ended by a human agent")
                 return None
             # Give small reward for winning to winning player if reward is zero
             if winner == 1:
                 if a1.rewards[-1] == 0:
-                    a1.rewards[-1] = 200
+                    a1.rewards[-1] = self.win_reward
             if winner == 2:
                 if a2.rewards[-1] == 0:
-                    a2.rewards[-1] = 200    
+                    a2.rewards[-1] = self.win_reward   
             # Display status
             if not display:
                 if i % display_interval == 0:
@@ -197,14 +199,14 @@ class Env (object):
         self.__str__()
         print()
         
-    def play(self, a1, a2, display = False, training_iteration = None, learn_rate = .01):
+    def play(self, a1, a2, display = False, training = True, learn_rate = .01):
         """
         Plays two agents against eachother
         Parameters:
             a1 (agent.Agent) - Agent for player 1
             a2 (agent.Agent) - Agent for player 2
             display (bool) - Should debug print board and winner
-            training (int or None) - Episode number if training, None if not training
+            training (bool) - Is training or not
             learn_rate (float) - Learn rate for training, unused if not training
         Note:
             Currently throws an error if both agents play an illegal move (thus not
@@ -225,17 +227,9 @@ class Env (object):
                 print("Turn #{}".format(self.turn))
             # Play the agent corresponding to the current turn
             if self.turn % 2 == 0:
-                if training_iteration != None:
-                    a1.act(self, training_iteration = training_iteration,
-                          training = True, learn_rate = learn_rate)
-                else:
-                    a1.act(self)
+                a1.act(self, training = training, learn_rate = learn_rate)
             else:
-                if training_iteration != None:
-                    a2.act(self, training_iteration = training_iteration,
-                          training = True, learn_rate = learn_rate)
-                else:
-                    a1.act(self)
+                a2.act(self, training = training, learn_rate = learn_rate)
             # Change turn
             self.turn += 1
             if display:

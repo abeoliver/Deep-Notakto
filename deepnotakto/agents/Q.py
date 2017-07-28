@@ -4,14 +4,15 @@
 
 import numpy as np
 import tensorflow as tf
-from random import choice, sample
+from random import choice, sample, shuffle
 from datetime import datetime
 from agent import Agent
 from copy import copy, deepcopy
+import pickle
 
 class Q (Agent):
     def __init__(self, layers, load_file_name = None, gamma = .8, trainable = True,
-                epsilon = 0.0, beta = 0.1):
+                epsilon = 0.0, beta = 0.1, player = 0):
         """
         Initializes an Q learning agent
         Parameters:
@@ -21,6 +22,7 @@ class Q (Agent):
             trainable (bool) - Is the model trainable or frozen
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration (only when training)
             beta (float) - Regularization hyperparameter
+            player (1, 2) - Player one or two, only used for naming (default 0)
         Note:
             Initializes randomly if no model is given
         """
@@ -33,9 +35,13 @@ class Q (Agent):
         self.gamma = gamma
         self.beta = beta
         self.epsilon = epsilon
+        self.player = player
+        self.train_iteration = 0
+        self.name = self.get_name()
         self.rotations = []
         # Create a tensorflow session for all processes to run in
-        self.session = tf.InteractiveSession()
+        tf.reset_default_graph()
+        self.session = tf.Session()
         # Load model if a file name is given
         if load_file_name != None:
             self.load(load_file_name)
@@ -45,13 +51,11 @@ class Q (Agent):
         # Initialize training variables like the loss and the optimizer
         self.init_training_vars()
         
-    def act(self, env, training_iteration = None, training = False, 
-            learn_rate = .01, **kwargs):
+    def act(self, env, training = False, learn_rate = .01):
         """
         Choose action, apply action to environment, and recieve reward
         Parameters:
             env (environment.Env) - Environment of the agent
-            training_iteration (int) - If model is training, which iteration for e-greedy
             training (bool) - Should update model with each step or not
             learn_rate (float) - Learning rate for training
             
@@ -80,8 +84,8 @@ class Q (Agent):
         Q[action_index] = reward + self.gamma * maxQ
         
         # Train if desired
-        if (training or training_iteration) and self.trainable:
-            self.update([current_state], [Q], learn_rate = learn_rate, training_iteration = training_iteration)
+        if training and self.trainable:
+            self.update([current_state], [Q], learn_rate = learn_rate)
         
         # Record state, action, reward, and target
         self.states.append(current_state)
@@ -90,9 +94,9 @@ class Q (Agent):
         self.targets.append(Q)
         
         # Change epsilon if training
-        # CURRENTLY DISABLED
-        if training_iteration != None and False:
-            self.change_epsilon(training_iteration)
+        # Currently DISABLED
+        if training and False:
+            self.change_epsilon(self.train_iteration)
     
     def change_epsilon(self, episode):
         """Changes the epsilon for e-greedy exploration as a function of episode number"""
@@ -139,7 +143,7 @@ class Q (Agent):
         """Randomly intitialize model"""
         with tf.name_scope("model"):
             s = self.size * self.size
-            self.x = tf.placeholder(tf.float32, [None, s], name = "input")
+            self.x = tf.placeholder(tf.float32, shape = [None, s], name = "input")
             if type(w) != list:
                 self.w = [tf.Variable(tf.random_normal([self.layers[n], self.layers[n + 1]]),
                                       trainable = self.trainable, name = "weights_{}".format(n))
@@ -164,6 +168,12 @@ class Q (Agent):
                 # Continue recursion
                 return feed(tf.matmul(inp, self.w[n], name = "feedmul{0}".format(n)) + self.b[n], n + 1)
             self.y = feed(self.x)
+            # Tensorboard visualizations
+            for i, weight in enumerate(self.w):
+                self.variable_summaries(weight, "Weight" + str(i))
+            for i, bias in enumerate(self.b):
+                self.variable_summaries(bias, "Bias" + str(i))
+            # Initialize the variables
             self.session.run(tf.global_variables_initializer())
     
     def init_training_vars(self):
@@ -177,26 +187,50 @@ class Q (Agent):
             # L2 Regularization
             l2 = tf.add(tf.nn.l2_loss(self.w[0]),
                         tf.nn.l2_loss(self.w[1]), name = "regularize")
-            tf.summary.scalar("L2", l2)
+            self.variable_summaries(l2, "L2")
+            # tf.summary.scalar("L2", l2)
             # Learning rate
             self.learn_rate = tf.placeholder(tf.float32)
             # Regular loss
-            data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y), name = "loss")
+            data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y), name = "data_loss")
+            self.variable_summaries(data_loss, "Data_loss")
             # Loss and Regularization
-            loss = tf.reduce_mean(tf.add(data_loss,
-                                         tf.constant(self.beta, name = "beta") * l2))
-            tf.summary.scalar("loss", loss)
+            loss = tf.verify_tensor_all_finite(
+                tf.reduce_mean(tf.add(data_loss, tf.constant(self.beta, name = "beta") * l2),
+                              name = "loss"),
+                msg = "Inf or NaN values",
+                name = "FiniteVerify"
+            )
+            self.variable_summaries(loss, "Loss")
+            # tf.summary.scalar("loss", loss)
             # Optimizer
             self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = 
                                                                 self.learn_rate,
                                                                 name = "optimizer")
             # Updater (minimizer)
             self._update_op = self._optimizer.minimize(loss, name = "update")
-            # Tensorboard
+            
+            # Tensorboard and debug
             self.merged = tf.summary.merge_all()
-            self.writer = tf.summary.FileWriter("tensorboard/", self.session.graph)
+            self.writer = tf.summary.FileWriter("tensorboard/" + self.name, self.session.graph)
+    
+    def variable_summaries(self, var, name):
+      """Attach mean/max/min/sd & histogram for TensorBoard visualization."""
+      with tf.name_scope('summaries'):
+        with tf.name_scope(name):
+            # Find the mean of the variable
+            mean = tf.reduce_mean(var)
+            # Log the mean as scalar
+            tf.summary.scalar('mean', mean)
+            with tf.name_scope('stddev'):
+                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+            tf.summary.scalar('stddev', stddev)
+            tf.summary.scalar('max', tf.reduce_max(var))
+            tf.summary.scalar('min', tf.reduce_min(var))
+            # Log var as a histogram
+            tf.summary.histogram('histogram', var)
 
-    def update(self, states, targets, learn_rate = .01, training_iteration = None):
+    def update(self, states, targets, learn_rate = .01):
         """Update (train) a model over a given set of states and targets"""
         if not self.trainable:
             return None
@@ -204,28 +238,51 @@ class Q (Agent):
         states = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         targets = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
         # Run training update
+        self.train_iteration += 1
         feed_dict = {self.x: states, self.q_targets: targets, self.learn_rate: learn_rate}
-        if not training_iteration:
-            self.session.run(self._update_op, feed_dict = feed_dict)
-        else:
-            summary, _ = self.session.run([self.merged, self._update_op], feed_dict = feed_dict)
-            self.writer.add_summary(summary, training_iteration)
+        summary, _ = self.session.run([self.merged, self._update_op], feed_dict = feed_dict)
+        self.writer.add_summary(summary, self.train_iteration)
     
-    def train(self, batch_size, epochs, learn_rate = .01, rotate_all = True):
+    def train(self, batch_size, epochs, learn_rate = .01, rotate_all = True, states = [], targets = []):
         """
         Trains the model over entire history
         Parameters:
             batch_size (int) - Number of samples in each minibatch
             epochs (int) - Number of iterations over the entire dataset
             rotate_all (bool) - Add rotations into the dataset
+            states (List of (N, N) arrays) - List of states to train over
+            targets (List of (N, N) arrays) - List of targets to train over
+        Note:
+            If states or targets are empty (or don't have matching dimensions), then full
+            state and target histories are used
         """
+        # Get state and target lists
+        if not (len(states) > 0 and len(targets) > 0 and len(states) == len(targets)):
+            states = copy(self.states)
+            targets = copy(self.targets)
         # Get rotations if requested
         if rotate_all:
             pass
-        # Batching
-        # Pass into update
-        self.update(batch_states, batch_targets, learn_rate)
-        
+        for _ in range(epochs):
+            # Batching
+            # Shuffle all indicies
+            order = list(range(len(states)))
+            shuffle(order)
+            # Chunk into batches
+            batches = list(self._chunk(order, batch_size))
+            for b in batches:
+                # Get the states and targets from the indidicies of the batch and pass into update
+                self.update([states[i] for i in b],
+                            [targets[i] for i in b],
+                            learn_rate)
+    
+    def _chunk(self, l, n):
+        """
+        Yield successive n-sized chunks from l
+        Taken from https://stackoverflow.com/questions/312443/how-do-you-split-a-list-into-evenly-sized-chunks
+        """
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
     
     def get_rotations(self, states, targets):
         """Train over the rotated versions of each state and reward"""
@@ -275,7 +332,13 @@ class Q (Agent):
     def get_biases(self):
         """Gets all bias matricies"""
         return [self.get_bias(i) for i in range(len(self.b))]
-        
+    
+    def get_name(self):
+        """Gets a model name based on the current date and time"""
+        today = datetime.now()
+        return "Q_P{0}_{1}_{2}_{3}_{4}_{5}_{6}".format(
+            self.player, self.layers, str(today.year)[2:], today.month, today.day, today.hour, today.minute)
+    
     def save(self, name = None, prefix = "agents/params/"):
         """
         Save the models parameters in a .npz file
@@ -283,20 +346,17 @@ class Q (Agent):
             name (string) - File name for save file
             prefix (string) - The file path prefix
         """
-        today = datetime.now()
         if not name:
-            name = prefix + "Q{0}_{1}_{2}_{3}_{4}_{5}.npz".format(
-                self.layers, str(today.year)[2:], today.month, today.day, today.hour, today.minute)
-        with open(name, "wb") as f:
-            np.savez(f, 
-                     w = [w.eval(session = self.session) for w in self.w],
-                     b = [b.eval(session = self.session) for b in self.b])
+            name = prefix + name + ".npz"
+        with open(name, "wb") as outFile:
+            pickle.dump({"weights": [w.eval(session = self.session) for w in self.w], 
+                         "biases": [b.eval(session = self.session) for b in self.b]},
+                        outFile)
     
     def load(self, name, prefix = "agents/params/", trainable = False):
-        """Loads a model from a given .npz file"""
+        """Loads a model from a given file"""
         name = prefix + name
-        with open(name, "rb") as f:
-            loaded = np.load(f)
+        with open(name, "rb") as inFile:
+            loaded = pickle.load(inFile)
             self.trainable = trainable
-            print(loaded["w"])
-            self.init_model(w = loaded["w"], b = loaded["b"])
+            self.init_model(w = loaded["weights"], b = loaded["biases"])
