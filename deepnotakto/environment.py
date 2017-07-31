@@ -4,20 +4,21 @@
 
 import numpy as np
 from copy import copy
+import matplotlib.pyplot as plt
 
 class Env (object):
-    def __init__(self, size, include_forced_reward = True, win_reward = 20):
+    def __init__(self, size, win_reward = 20):
         """
         Initializes the environment
         Parameters:
             size (Int) - Side length of the board (board size = size * size)
-            include_forced_reward (bool) - Should the reward function consider forces
         """
+        # Board variables
         self.size = size
         self.shape = (size, size)
-        self.include_forced_reward = include_forced_reward
-        self.win_reward = win_reward
         self.reset()
+        # Reward variables
+        self.win_reward = win_reward
     
     def reset(self):
         """Reset board"""
@@ -48,13 +49,17 @@ class Env (object):
         if winner == 0:
             # Positive reward for forcing a loss
             # Not possible with three or fewer moves so don't check
-            if self.turn >= 2 and self.include_forced_reward:
+            if self.turn >= 2:
                 if self.forced(new_board):
+                    # High reward for a forced win
                     return 8
                 else:
-                    return 0
+                    # Small reward for lasting long
+                    return 1
+            # No reward
             return 0
         else:
+            # Negative reward for a loss
             return -5
         
     def act(self, action):
@@ -120,7 +125,8 @@ class Env (object):
         return True
     
     def train(self, a1, a2, episodes, display = False, rotate_player_one = False,
-             learn_rate = .01, continuous_update = False):
+             learn_rate = .01, continuous_update = False, image = False,
+             confidences = False):
         """
         Train two agents over a given number of episodes
         Parameters:
@@ -131,6 +137,8 @@ class Env (object):
             rotate_player_one (bool) - Should first turn be rotated
             learn_rate (float) - Learning rate for training
             continuous_update (bool) - Update model continuously or not
+            image (bool) - Display board as image or not
+            confidences (bool) - Show confidences of each AI move
         """
         if not display:
             print("Training ", end = "")
@@ -140,7 +148,7 @@ class Env (object):
             self.reset()
             # Play game
             winner = self.play(a1, a2, display = display, training = continuous_update,
-                              learn_rate = learn_rate)
+                              learn_rate = learn_rate, image = image, confidences = confidences)
             # Quit if needed
             if self._end_training:
                 print()
@@ -164,19 +172,22 @@ class Env (object):
             print(" Done")
     
     def possible_moves(self, board = None):
-        """Returns a list of all possible moves"""
+        """Returns a list of all possible moves (reguardless of win / loss)"""
+        # Get board
         if type(board) != np.ndarray:
             b = copy(self.board)
         else:
             b = copy(board)
         remaining = []
+        # If in a 2D shape
         if len(b.shape) == 2:
             for i in range(b.shape[0]):
                 for j in range(b.shape[1]):
                     if b[i, j] == 0:
-                        z = np.zeros(b.shape)
+                        z = np.zeros(b.shape, dtype = np.int32)
                         z[i, j] = 1
                         remaining.append(z)
+        # If in a 1D shape
         else:
             for i in range(b.shape[0]):
                 if b[i] == 0:
@@ -194,12 +205,17 @@ class Env (object):
             print()
         return ""
     
-    def display(self):
-        """Print board"""
-        self.__str__()
-        print()
+    def display(self, image = False):
+        """Prints board or shows it as an image"""
+        if not image:
+            self.__str__()
+            print()
+        else:
+            plt.imshow(self.observe(), cmap = "gray")
+            plt.show()
         
-    def play(self, a1, a2, display = False, training = True, learn_rate = .01):
+    def play(self, a1, a2, display = False, training = True, learn_rate = .01,
+             image = False, confidences = False):
         """
         Plays two agents against eachother
         Parameters:
@@ -208,6 +224,8 @@ class Env (object):
             display (bool) - Should debug print board and winner
             training (bool) - Is training or not
             learn_rate (float) - Learn rate for training, unused if not training
+            image (bool) - Display board as image or not
+            confidences (bool) - Show confidences of each AI move
         Note:
             Currently throws an error if both agents play an illegal move (thus not
             changing the board). This element of the system will be removed once
@@ -215,11 +233,9 @@ class Env (object):
         """
         # Is the game loop finished
         done = False
-        # Has the last turn been missed because of an illegal move
-        last_missed = False
         # Main game loop
         if display:
-                self.display()
+                self.display(image)
         while not done and not self._end_episode:
             # Copy the board for later comparison pre and post move
             b_copy = copy(self.board) 
@@ -227,33 +243,29 @@ class Env (object):
                 print("Turn #{}".format(self.turn))
             # Play the agent corresponding to the current turn
             if self.turn % 2 == 0:
+                if confidences:
+                    print("Player 1 Confidences")
+                    print(a1.show_Q(self.observe()))
                 a1.act(self, training = training, learn_rate = learn_rate)
             else:
+                if confidences:
+                    print("Player 2 Confidences")
+                    print(a2.show_Q(self.observe()))
                 a2.act(self, training = training, learn_rate = learn_rate)
             # Change turn
             self.turn += 1
             if display:
-                self.display()
+                self.display(image)
             
             # Catch double illegal moves
             if np.equal(b_copy, self.board).all() and self.turn != 0:
                 if display:
-                    print("Player attempted illegal move")
-                # If a move was not made, but the previous one was
-                if not last_missed:
-                    last_missed = True
-                # If a move was not made and the last was
-                else:
-                    raise ValueError("Two missed turns in a row")
-            # If a move was made
-            else:
-                last_missed = False
-            
+                    print("Agent attempted an illegal move")
+                done = True
             # End the loop if game is over
             done = False if self.is_over() == 0 else True
         if display:
-            if display:
-                self.display()
+            self.display(image = image)
             print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
         # Return winner
         return (1 if self.turn % 2 == 0 else 2) if self.is_over() != 0 else 0

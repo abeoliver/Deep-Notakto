@@ -11,6 +11,7 @@ class Human (Agent):
         """Initializes a human agent"""
         # Call parent initializer
         super(Human, self).__init__()
+        self.name = "Human"
     
     def act(self, env, **kwargs):
         """Choose and action and apply to environment"""

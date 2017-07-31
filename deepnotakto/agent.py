@@ -22,6 +22,10 @@ class Agent (object):
     def save(self, name = "agent"):
         pass
     
+    def show_Q(self, board):
+        """Shows confidences for a given board"""
+        return None
+    
     @staticmethod
     def load(name):
         """Loads a model from a given file name"""
