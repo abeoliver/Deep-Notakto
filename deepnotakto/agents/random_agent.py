@@ -19,6 +19,5 @@ class RandomAgent (Agent):
             c = randint(0, env.board.shape[0] - 1)
         m[r, c] = 1
         _, reward = env.act(m)
-        self.states.append(state)
-        self.actions.append(m)
-        self.rewards.append(reward)
+        self.record(state, m, reward)
+        return [state, m, reward]

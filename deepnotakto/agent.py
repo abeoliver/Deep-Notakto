@@ -19,6 +19,18 @@ class Agent (object):
     
     def train(self, states, targets):
         pass
+
+    def record(self, state, action, reward):
+        """Record an action"""
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+
+    def reset_memory(self):
+        """Reset the memory of an agent"""
+        self.states = []
+        self.actions = []
+        self.rewards = []
     
     def save(self, name = "agent"):
         pass
