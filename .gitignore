@@ -1,0 +1,10 @@
+
+\.idea/
+
+deepnotakto/\.ipynb_checkpoints/
+
+deepnotakto/__pycache__/
+
+*.pyc
+
+*.ABEOLIVER

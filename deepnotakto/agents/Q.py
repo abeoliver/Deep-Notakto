@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 class Q (Agent):
     def __init__(self, layers, load_file_name = None, gamma = .8, trainable = True,
-                epsilon = 0.0, beta = 0.1, player = 0):
+                epsilon = 0.0, beta = 0.1, player = 0, sigmoid = False):
         """
         Initializes an Q learning agent
         Parameters:
@@ -24,6 +24,7 @@ class Q (Agent):
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration (only when training)
             beta (float) - Regularization hyperparameter
             player (1, 2) - Player one or two, only used for naming (default 0)
+            sigmoid (bool) - Whether to apply the sigmoid activation function to hidden layers
         Note:
             Initializes randomly if no model is given
         """
@@ -38,6 +39,7 @@ class Q (Agent):
         self.beta = beta
         self.epsilon = epsilon
         self.player = player
+        self.sigmoid = sigmoid
         self.train_iteration = 0
         self.name = self.get_name()
         self.rotations = []
@@ -54,7 +56,7 @@ class Q (Agent):
         # Initialize training variables like the loss and the optimizer
         self.init_training_vars()
 
-    def act(self, env, training = False, learn_rate = .01):
+    def act(self, env, training = False, learn_rate = .0001):
         """
         Choose action, apply action to environment, and recieve reward
         Parameters:
@@ -179,9 +181,14 @@ class Q (Agent):
                     # End recursion
                     if n == len(self.layers) - 2:
                         # Minus 2 because final layer does no math (-1) and the lists start at zero (-1)
-                        return tf.matmul(inp, self.w[n], name = "feedmul{0}".format(n)) + self.b[n]
+                        return tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)) + self.b[n]
                     # Continue recursion
-                    return feed(tf.matmul(inp, self.w[n], name = "feedmul{0}".format(n)) + self.b[n], n + 1)
+                    out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
+                                 name = "feedadd{}".format(n))
+                    if self.sigmoid:
+                        return feed(tf.nn.sigmoid(out), n + 1)
+                    else:
+                        return feed(out, n + 1)
                 self.y = feed(self.x)
                 # Tensorboard visualizations
                 for i, weight in enumerate(self.w):
@@ -311,6 +318,7 @@ class Q (Agent):
             # Output
             if epoch % display_interval == 0:
                 print("*", end = "")
+        print(" Done")
 
     def _chunk(self, l, n):
         """

@@ -8,6 +8,7 @@ from agent import Agent
 
 class RandomAgent (Agent):
     def __init__(self):
+        super(RandomAgent, self).__init__()
         self.name = "Random"
     def act(self, env, **kwargs):
         state =  env.observe()

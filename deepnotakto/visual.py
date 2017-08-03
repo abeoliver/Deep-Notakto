@@ -15,24 +15,9 @@ class Visualization (object):
         """Initializes a visualization"""
         self.size = self.width, self.height = size
         self.canvas = pygame.display.set_mode(self.size)
-        self.buttons = {}
+        self.define_buttons()
         self.init_colors()
         pygame.font.init()
-        self.font = pygame.font.SysFont('Calibri Bold', 60)
-
-    def events(self, actions = {pygame.QUIT: sys.exit}):
-        """
-        Checks and responds to pygame events
-        Parameters:
-            actions (Dict Pygame Event -> Function) - Actions to take for certain events
-        """
-        # Loop through events
-        for event in pygame.event.get():
-            # Find given action to take
-            for key in actions.keys():
-                if key == event.type:
-                    # Call the action
-                    actions[key]()
 
     def update(self):
         """Update display"""
@@ -81,9 +66,7 @@ class Visualization (object):
             "black": [0, 0, 0],
             "red": [255, 0, 0],
             "green": [0, 255, 0],
-            "blue": [0, 0, 255],
-            "piece_blue": [29, 135, 229],
-            "piece_gray": [144, 164, 174]
+            "blue": [0, 0, 255]
         }
 
     def get_button(self, cursor_loc):
@@ -106,6 +89,9 @@ class Visualization (object):
         # Default
         return ""
 
+    def define_buttons(self):
+        self.buttons = {}
+
     @staticmethod
     def norm(x):
         """Normalize an array"""
@@ -115,30 +101,47 @@ class Visualization (object):
             return x
         return (x - xmin) / (xmax - xmin)
 
-class Game3x3 (Visualization):
-    def __init__(self, env, p1, p2, training = False):
+class GameWithConfidences (Visualization):
+    def __init__(self, env, p1, p2, training = False, piece_size =  100, learn_rate = .0001):
         """Initalizes a game on an environment between two players"""
         # Call the parent initializer with the desired screen size
-        super(Game3x3, self).__init__([900, 500])
+        self.shape = env.shape
+        self.side = self.shape[0]
+        self.piece_size = piece_size
+        width = piece_size * (3 + self.side * 2)
+        height = piece_size * (2 + self.side)
+        super(GameWithConfidences, self).__init__([width, height])
         self.env = env
         self.training = training
+        self.learn_rate = learn_rate
         self.p1 = p1
         self.p2 = p2
         self.p1_human = p1.name == "Human"
         self.p2_human = p2.name == "Human"
-        self.buttons = {
-            "next": (800, 0, 100, 100),
-            "0 0": (500, 100, 100, 100),
-            "0 1": (600, 100, 100, 100),
-            "0 2": (700, 100, 100, 100),
-            "1 0": (500, 200, 100, 100),
-            "1 1": (600, 200, 100, 100),
-            "1 2": (700, 200, 100, 100),
-            "2 0": (500, 300, 100, 100),
-            "2 1": (600, 300, 100, 100),
-            "2 2": (700, 300, 100, 100)
+        self.define_buttons()
+        self.colors["piece_closed"] = [29, 135, 229]
+        self.colors["piece_open"] = [144, 164, 174]
+        self.font = pygame.font.SysFont('Calibri Bold', self.width // 30)
+        # Run game
+        try:
+            self.run()
+        except:
+            pygame.quit()
+
+    def define_buttons(self):
+        """Define the buttons for the given board size"""
+        buttons = {
+            "next": (self.width - self.piece_size, 0, self.piece_size, self.piece_size)
         }
-        self.run()
+        start = [(2 + self.side) * self.piece_size, self.piece_size]
+        for n in range(self.side):
+            for m in range(self.side):
+                buttons["{0} {1}".format(m, n)] = (
+                    start[0] + n * self.piece_size,
+                    start[1] + m * self.piece_size,
+                    self.piece_size, self.piece_size
+                )
+        self.buttons = buttons
 
     def display(self, qmatrix, board, banner = "", next = False):
         """Updates the canvas to the desired display screen"""
@@ -148,27 +151,36 @@ class Game3x3 (Visualization):
             text_surface = self.font.render(banner, True, self.colors["black"])
             text_rect = text_surface.get_rect()
             self.canvas.blit(text_surface, (self.width // 2 - text_rect[2] // 2,
-                                            50 - text_rect[3] // 2))
+                                            self.piece_size // 2 - text_rect[3] // 2))
         # Draw next arrow
         if next:
             pygame.draw.polygon(self.canvas, self.colors["black"],
-                                [(825, 25), (825, 75), (875, 50)])
+                                [(self.width - ((3 * self.piece_size) // 4),
+                                  self.piece_size // 4),
+                                 (self.width - ((3 * self.piece_size) // 4),
+                                  (3 * self.piece_size) // 4),
+                                  (self.width - (self.piece_size // 4),
+                                   self.piece_size // 2)])
         # DISPLAY CONFIDENCS
         normed = Visualization.norm(qmatrix)
         conf_rects = self.array_to_rect(normed,
-                                        [100, 100], 100, self.q_colorfunc)
-        self.draw_rects(conf_rects, 10, self.colors["white"])
+                                        [self.piece_size, self.piece_size],
+                                        self.piece_size, self.q_colorfunc)
+        self.draw_rects(conf_rects, self.piece_size // 10, self.colors["white"])
         # DISPLAY BOARD
-        board_rects = self.array_to_rect(board, [500, 100],
-                                       100, self.board_colorfunc)
-        self.draw_rects(board_rects, 10, self.colors["white"])
+        board_rects = self.array_to_rect(board,
+                                         [(self.side + 2) * self.piece_size,
+                                          self.piece_size],
+                                         self.piece_size,
+                                         self.board_colorfunc)
+        self.draw_rects(board_rects, self.piece_size // 10 , self.colors["white"])
 
     def board_colorfunc(self, x):
         """Color function for a regular board"""
         if int(round(x)) == 1:
-            return self.colors["piece_blue"]
+            return self.colors["piece_closed"]
         else:
-            return self.colors["piece_gray"]
+            return self.colors["piece_open"]
 
     def q_colorfunc(self, x, cmap = "viridis"):
         """
@@ -199,14 +211,14 @@ class Game3x3 (Visualization):
             done = False
             # If the first player is a computer, have it play
             if not self.p1_human:
-                qs = np.reshape(self.p1.get_Q(self.env.observe()), [3, 3])
-                self.p1.act(self.env, training=False)
+                qs = np.reshape(self.p1.get_Q(self.env.observe()), self.shape)
+                self.p1.act(self.env, training = self.training, learn_rate = self.learn_rate)
                 self.env.turn += 1
                 banner = "PLAYER 2"
             else:
                 # Banner
                 banner = "PLAYER 1"
-                qs = np.zeros([3, 3])
+                qs = np.zeros(self.shape)
             board = self.env.observe()
             button = ""
             # Play game
@@ -241,7 +253,7 @@ class Game3x3 (Visualization):
                     if done: break
                     else: button = "next"
                 # On user command, run next agent turn
-                if button == "next":
+                if button == "next" and not (self.p1_human and self.p2_human):
                     button = ""
                     # Update banner
                     if banner == "Player attempted illegal move":
@@ -250,11 +262,13 @@ class Game3x3 (Visualization):
                     b_copy = copy(self.env.board)
                     # Play the agent corresponding to the current turn
                     if self.env.turn % 2 == 0:
-                        qs = np.reshape(self.p1.get_Q(b_copy), [3, 3])
-                        self.p1.act(self.env, training = self.training)
+                        qs = np.reshape(self.p1.get_Q(b_copy), self.shape)
+                        self.p1.act(self.env, training = self.training,
+                                    learn_rate = self.learn_rate)
                     else:
-                        qs = np.reshape(self.p2.get_Q(b_copy), [3, 3])
-                        self.p2.act(self.env, training = self.training)
+                        qs = np.reshape(self.p2.get_Q(b_copy), self.shape)
+                        self.p2.act(self.env, training = self.training,
+                                    learn_rate = self.learn_rate)
                     board = self.env.observe()
                     # Change turn
                     self.env.turn += 1
@@ -278,7 +292,11 @@ if __name__ == "__main__":
     from environment import Env
     from agents.Q import Q
     from agents.human import Human
-    e = Env(3)
-    p = Q([9, 50, 100, 9], "agents/params/Q[9, 50, 100, 9]_WORKING_WITH_MIDDLE.npz")
+    from agents.random_agent import RandomAgent
+    from agents.random_plus import RandomAgentPlus
+    size = 4
+    e = Env(size)
+    p = Q([size * size, size * size])
+    # p = Human()
     h = Human()
-    Game3x3(e, p, h)
+    GameWithConfidences(e, p, h, piece_size = 150)

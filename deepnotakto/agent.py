@@ -3,6 +3,7 @@
 # Deep-Notakto Project
 
 from numpy import reshape
+from numpy.random import normal
 
 class Agent (object):
     def __init__(self):
@@ -25,6 +26,10 @@ class Agent (object):
     def show_Q(self, board):
         """Shows confidences for a given board"""
         return None
+
+    def get_Q(self, board):
+        """Gets the Q-values (all random)"""
+        return normal(size = board.shape)
     
     @staticmethod
     def load(name):
