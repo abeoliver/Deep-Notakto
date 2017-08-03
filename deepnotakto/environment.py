@@ -7,7 +7,7 @@ from copy import copy
 import matplotlib.pyplot as plt
 
 class Env (object):
-    def __init__(self, size, win_reward = 20):
+    def __init__(self, size):
         """
         Initializes the environment
         Parameters:
@@ -17,15 +17,13 @@ class Env (object):
         self.size = size
         self.shape = (size, size)
         self.reset()
-        # Reward variables
-        self.win_reward = win_reward
     
     def reset(self):
         """Reset board"""
         self.board = np.zeros(self.shape, dtype = np.int32)
         self.turn = 0
-        self._end_episode = False
-        self._end_training = False
+        self._end = False
+        self._illegal = False
     
     def observe(self):
         """The observe step of the reinforcement learning pipeline"""
@@ -39,10 +37,10 @@ class Env (object):
         Returns:
             Int - Reward for given action
         """
-        new_board = np.add(self.board, action)
+        new_board = np.add(self.board, np.reshape(action, self.shape))
         # If illegal move, highly negative reward
         if np.max(new_board) > 1:
-            self._end_episode = True
+            self._illegal = True
             return -10
         # Rewards based on winner
         winner = self.is_over(new_board)
@@ -75,7 +73,7 @@ class Env (object):
         # Calculate move reward
         reward = self.reward(action)
         # Calculate move effect
-        move = np.add(self.board, action)
+        move = np.add(self.board, np.reshape(action, self.shape))
         # Play the move if the move isn't legal
         if not np.max(move) > 1:
             self.board = move
@@ -124,53 +122,6 @@ class Env (object):
                 return False
         return True
     
-    def train(self, a1, a2, episodes, display = False, rotate_player_one = False,
-             learn_rate = .01, continuous_update = False, image = False,
-             confidences = False):
-        """
-        Train two agents over a given number of episodes
-        Parameters:
-            a1 (Agent) - An agent to train
-            a2 (Agent) - An agent to train
-            episodes (int) - Number of episodes to train over
-            display (bool) - Passed to play function for game output
-            rotate_player_one (bool) - Should first turn be rotated
-            learn_rate (float) - Learning rate for training
-            continuous_update (bool) - Update model continuously or not
-            image (bool) - Display board as image or not
-            confidences (bool) - Show confidences of each AI move
-        """
-        if not display:
-            print("Training ", end = "")
-        display_interval = episodes // 10 if episodes >= 10 else 1
-        for i in range(episodes):
-            # Reset board
-            self.reset()
-            # Play game
-            winner = self.play(a1, a2, display = display, training = continuous_update,
-                              learn_rate = learn_rate, image = image, confidences = confidences)
-            # Quit if needed
-            if self._end_training:
-                print()
-                print("Ended by a human agent")
-                return None
-            # Give small reward for winning to winning player if reward is zero
-            if winner == 1:
-                if a1.rewards[-1] == 0:
-                    a1.rewards[-1] = self.win_reward
-            if winner == 2:
-                if a2.rewards[-1] == 0:
-                    a2.rewards[-1] = self.win_reward   
-            # Display status
-            if not display:
-                if i % display_interval == 0:
-                    print("*", end = "")
-            # Rotate players if needed
-            if rotate_player_one:
-                a1, a2 = a2, a1
-        if not display:
-            print(" Done")
-    
     def possible_moves(self, board = None):
         """Returns a list of all possible moves (reguardless of win / loss)"""
         # Get board
@@ -205,67 +156,66 @@ class Env (object):
             print()
         return ""
     
-    def display(self, image = False):
+    def display(self):
         """Prints board or shows it as an image"""
-        if not image:
-            self.__str__()
-            print()
-        else:
-            plt.imshow(self.observe(), cmap = "gray")
-            plt.show()
+        self.__str__()
+        print()
         
-    def play(self, a1, a2, display = False, training = True, learn_rate = .01,
-             image = False, confidences = False):
+    def play(self, a1, a2, games = 1, display = False, trainer_a1 = None, trainer_a2 = None):
         """
         Plays two agents against eachother
         Parameters:
             a1 (agent.Agent) - Agent for player 1
             a2 (agent.Agent) - Agent for player 2
+            games (int) - Number of games to play
             display (bool) - Should debug print board and winner
-            training (bool) - Is training or not
-            learn_rate (float) - Learn rate for training, unused if not training
-            image (bool) - Display board as image or not
-            confidences (bool) - Show confidences of each AI move
-        Note:
-            Currently throws an error if both agents play an illegal move (thus not
-            changing the board). This element of the system will be removed once
-            agents can be garaunteed not to play illegal moves.
+            trainer_a1 ((N, N) array, (N, N) array, float -> None) -
+                Agent #1 online training func
+            trainer_a2 ((N, N) array, (N, N) array, float -> None) -
+                Agent #2 online training func
         """
-        # Is the game loop finished
-        done = False
-        # Main game loop
-        if display:
-                self.display(image)
-        while not done and not self._end_episode:
-            # Copy the board for later comparison pre and post move
-            b_copy = copy(self.board) 
+        # Loop for multiple games
+        played_games = 0
+        self._end = False
+        while played_games < games and not self._end:
+            self.reset()
+            played_games += 1
+            # Is the game loop finished
+            done = False
+            illegal = False
+            # Main game loop
             if display:
-                print("Turn #{}".format(self.turn))
-            # Play the agent corresponding to the current turn
-            if self.turn % 2 == 0:
-                if confidences:
-                    print("Player 1 Confidences")
-                    print(a1.show_Q(self.observe()))
-                a1.act(self, training = training, learn_rate = learn_rate)
-            else:
-                if confidences:
-                    print("Player 2 Confidences")
-                    print(a2.show_Q(self.observe()))
-                a2.act(self, training = training, learn_rate = learn_rate)
-            # Change turn
-            self.turn += 1
-            if display:
-                self.display(image)
-            
-            # Catch double illegal moves
-            if np.equal(b_copy, self.board).all() and self.turn != 0:
+                    self.display()
+            while not done and not self._end and not self._illegal:
+                # Copy the board for later comparison pre and post move
+                b_copy = copy(self.board)
                 if display:
-                    print("Agent attempted an illegal move")
-                done = True
-            # End the loop if game is over
-            done = False if self.is_over() == 0 else True
-        if display:
-            self.display(image = image)
-            print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-        # Return winner
-        return (1 if self.turn % 2 == 0 else 2) if self.is_over() != 0 else 0
+                    print("Turn #{}".format(self.turn))
+                # Play the agent corresponding to the current turn
+                if self.turn % 2 == 0:
+                    state, action, reward = a1.act(self)
+                    if trainer_a1 != None:
+                        if self._end: return None
+                        trainer_a1(state, action, reward)
+                else:
+                    state, action, reward = a2.act(self)
+                    if self._end: return None
+                    if trainer_a2 != None:
+                        trainer_a2(state, action, reward)
+                # Change turn
+                self.turn += 1
+                if display:
+                    self.display()
+
+                # Catch double illegal moves
+                if np.equal(b_copy, self.board).all() and self.turn != 0:
+                    if display:
+                        print("Agent attempted an illegal move")
+                    done = True
+                    self._illegal = True
+                else:
+                    # End the loop if game is over
+                    done = False if self.is_over() == 0 else True
+            if display and not self._illegal:
+                self.display()
+                print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))

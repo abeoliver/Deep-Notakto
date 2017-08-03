@@ -6,6 +6,7 @@ import sys, pygame
 import numpy as np
 from matplotlib.pyplot import get_cmap
 from copy import copy
+from tensorflow.python.framework.errors_impl import InvalidArgumentError
 
 # Initialize Pygame
 pygame.init()
@@ -102,7 +103,8 @@ class Visualization (object):
         return (x - xmin) / (xmax - xmin)
 
 class GameWithConfidences (Visualization):
-    def __init__(self, env, p1, p2, training = False, piece_size =  100, learn_rate = .0001):
+    def __init__(self, env, a1, a2, max_games = -1, piece_size =  100,
+                 trainer_a1 = None, trainer_a2 = None):
         """Initalizes a game on an environment between two players"""
         # Call the parent initializer with the desired screen size
         self.shape = env.shape
@@ -112,12 +114,14 @@ class GameWithConfidences (Visualization):
         height = piece_size * (2 + self.side)
         super(GameWithConfidences, self).__init__([width, height])
         self.env = env
-        self.training = training
-        self.learn_rate = learn_rate
-        self.p1 = p1
-        self.p2 = p2
-        self.p1_human = p1.name == "Human"
-        self.p2_human = p2.name == "Human"
+        # 0 or negative max_games means indefinite
+        self.max_games = max_games
+        self.a1 = a1
+        self.a2 = a2
+        self.trainer_a1 = trainer_a1
+        self.trainer_a2 = trainer_a2
+        self.a1_human = a1.name == "Human"
+        self.a2_human = a2.name == "Human"
         self.define_buttons()
         self.colors["piece_closed"] = [29, 135, 229]
         self.colors["piece_open"] = [144, 164, 174]
@@ -125,6 +129,9 @@ class GameWithConfidences (Visualization):
         # Run game
         try:
             self.run()
+        except InvalidArgumentError as error:
+            print("Tensor has NaN or Inf values")
+            pygame.quit()
         except:
             pygame.quit()
 
@@ -204,15 +211,19 @@ class GameWithConfidences (Visualization):
     def run(self):
         """Runs the game between the two agents"""
         # Play games until exited
+        games = 0
         while True:
+            games += 1
             # Reset environment
             self.env.reset()
             # Is the game loop finished
             done = False
             # If the first player is a computer, have it play
-            if not self.p1_human:
-                qs = np.reshape(self.p1.get_Q(self.env.observe()), self.shape)
-                self.p1.act(self.env, training = self.training, learn_rate = self.learn_rate)
+            if not self.a1_human:
+                qs = np.reshape(self.a1.get_Q(self.env.observe()), self.shape)
+                state, action, reward = self.a1.act(self.env)
+                if self.trainer_a1 != None:
+                    self.trainer_a1(state, action, reward)
                 self.env.turn += 1
                 banner = "PLAYER 2"
             else:
@@ -225,11 +236,12 @@ class GameWithConfidences (Visualization):
             while not done:
                 # Run event loop, drawing, and update
                 button = self.events()
+                banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                 self.display(qs, board, banner, next = True)
                 self.update()
                 # Run human turn if turn
-                if (self.env.turn % 2 == 0 and self.p1_human) or \
-                    (self.env.turn % 2 == 1 and self.p2_human):
+                if (self.env.turn % 2 == 0 and self.a1_human) or \
+                    (self.env.turn % 2 == 1 and self.a2_human):
                     # Human turn
                     while True:
                         # Run event loop, drawing, and update
@@ -244,7 +256,16 @@ class GameWithConfidences (Visualization):
                             move = np.zeros(self.env.shape, dtype = np.int32)
                             move[m, n] = 1
                             # Play the move
-                            self.env.act(move)
+                            _, reward = self.env.act(move)
+                            # Record move and train
+                            if self.env.turn % 2 == 0:
+                                self.a1.record(board, move, reward)
+                                if self.trainer_a1 != None:
+                                    self.trainer_a1(board, move, reward)
+                            elif self.env.turn % 2 == 1:
+                                self.a2.record(board, move, reward)
+                                if self.trainer_a2 != None:
+                                    self.trainer_a2(board, move, reward)
                             self.env.turn += 1
                             break
                     # Continue game loop
@@ -253,7 +274,7 @@ class GameWithConfidences (Visualization):
                     if done: break
                     else: button = "next"
                 # On user command, run next agent turn
-                if button == "next" and not (self.p1_human and self.p2_human):
+                if button == "next" and not (self.a1_human and self.a2_human):
                     button = ""
                     # Update banner
                     if banner == "Player attempted illegal move":
@@ -262,13 +283,15 @@ class GameWithConfidences (Visualization):
                     b_copy = copy(self.env.board)
                     # Play the agent corresponding to the current turn
                     if self.env.turn % 2 == 0:
-                        qs = np.reshape(self.p1.get_Q(b_copy), self.shape)
-                        self.p1.act(self.env, training = self.training,
-                                    learn_rate = self.learn_rate)
+                        qs = np.reshape(self.a1.get_Q(b_copy), self.shape)
+                        state, action, reward = self.a1.act(self.env)
+                        if self.trainer_a1 != None:
+                            self.trainer_a1(state, action, reward)
                     else:
-                        qs = np.reshape(self.p2.get_Q(b_copy), self.shape)
-                        self.p2.act(self.env, training = self.training,
-                                    learn_rate = self.learn_rate)
+                        qs = np.reshape(self.a2.get_Q(b_copy), self.shape)
+                        state, action, reward = self.a2.act(self.env)
+                        if self.trainer_a2 != None:
+                            self.trainer_a2(state, action, reward)
                     board = self.env.observe()
                     # Change turn
                     self.env.turn += 1
@@ -282,10 +305,11 @@ class GameWithConfidences (Visualization):
                 banner = "PLAYER {} WINS".format(self.env.is_over())
             # Leave on final screen until clicked forward
             while True:
+                allow_next = (games < self.max_games) or (self.max_games <= 0)
                 button = self.events()
-                self.display(qs, board, banner, next = True)
+                self.display(qs, board, banner, next = allow_next)
                 self.update()
-                if button == "next":
+                if button == "next" and allow_next:
                     break
 
 if __name__ == "__main__":

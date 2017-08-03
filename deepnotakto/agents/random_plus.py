@@ -11,6 +11,7 @@ class RandomAgentPlus (Agent):
     def __init__(self):
         super(RandomAgentPlus, self).__init__()
         self.name = "RandomPlus"
+
     def act(self, env, **kwargs):
         state =  env.observe()
         possible = env.possible_moves()
@@ -33,6 +34,5 @@ class RandomAgentPlus (Agent):
             move = choice(possible)
         # Make move
         _, reward = env.act(move)
-        self.states.append(state)
-        self.actions.append(move)
-        self.rewards.append(reward)
+        self.record(state, move, reward)
+        return [state, move, reward]

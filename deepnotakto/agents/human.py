@@ -15,16 +15,16 @@ class Human (Agent):
     
     def act(self, env, **kwargs):
         """Choose and action and apply to environment"""
+        state = env.observe()
         move = self.get_turn(env)
         if move == False:
-            env._end_episode = True
-            env._end_training = True
-            return None
-        zeros = np.zeros(env.shape)
-        zeros[move[0], move[1]] = 1
-        state, reward = env.act(zeros)
-        self.states.append(state)
-        self.rewards.append(reward)
+            env._end = True
+            return [0, 0, 0]
+        action = np.zeros(env.shape)
+        action[move[0], move[1]] = 1
+        _, reward = env.act(action)
+        self.record(state, action, reward)
+        return [state, action, reward]
     
     def get_turn(self, env):
         """Get turn input"""
