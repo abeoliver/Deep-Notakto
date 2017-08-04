@@ -20,11 +20,13 @@ class RandomAgentPlus (Agent):
         move = zeros(env.shape)
         # Choose a winner and identify non-losers
         for m in possible:
-            winner = env.is_over(add(m, state))
-            if winner == player:
+            new_state = add(m, state)
+            # Make move if force (winner)
+            if env.forced(new_state):
                 move = m
                 break
-            elif winner == 0:
+            winner = env.is_over(new_state)
+            if winner == 0:
                 not_loser.append(m)
         if not equal(move, 0).all():
             pass
