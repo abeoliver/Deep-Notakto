@@ -7,22 +7,27 @@ import tensorflow as tf
 from random import shuffle
 
 class Trainer (object):
-    def __init__(self, agent):
+    def __init__(self, agent, learn_rate = 1e-4):
         """
         Initializes a Trainer object
         Parameter:
             agent (Q.Q) - Q Agent to train
+            learn_rate (float) - Learning rate
         """
         self.agent = agent
         self.iteration = 0
         self.writer = tf.summary.FileWriter("tensorboard/" + agent.name,
                                             agent.session.graph)
+        self.learn_rate = learn_rate
 
-    def get_online(self, learn_rate = .0001):
+
+    def get_online(self, learn_rate = None):
         """Gets a callable function of online with a given learning rate"""
+        if learn_rate == None:
+            learn_rate = self.learn_rate
         return lambda x, y, z: self.online(x, y, z, learn_rate)
 
-    def online(self, state, action, reward, learn_rate = .0001):
+    def online(self, state, action, reward, learn_rate = None):
         """
         Train the on a single state and reward (usually in an environment)
         Parameters:
@@ -31,11 +36,13 @@ class Trainer (object):
             reward (float) - Reward for action on state
             learn_rate (float) - Learning rate
         """
+        if learn_rate == None:
+            learn_rate = self.learn_rate
         target = self.agent.target(state, action, self.agent.get_Q(state), reward)
         self.agent.update([state], [target], learn_rate)
 
     def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
-                learn_rate = .0001, silence = False):
+                learn_rate = None, silence = False):
         """
         Trains the agent with a Markov Decision Model
         Parameters:
@@ -52,6 +59,8 @@ class Trainer (object):
             Q-function and are not effected by the others in the
             batch
         """
+        if learn_rate == None:
+            learn_rate = self.learn_rate
         # Output
         if not silence:
             print("Training ", end = "")
@@ -153,10 +162,3 @@ class Trainer (object):
         """
         for i in range(0, len(l), n):
             yield l[i:i + n]
-
-    def rotate(self, x):
-        """Rotates an array counter-clockwise"""
-        n = np.zeros(x.shape)
-        for i in range(x.shape[0]):
-            n[:, i] = x[i][::-1]
-        return n

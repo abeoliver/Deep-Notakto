@@ -103,7 +103,7 @@ class Visualization (object):
         return (x - xmin) / (xmax - xmin)
 
 class GameWithConfidences (Visualization):
-    def __init__(self, env, a1, a2, max_games = -1, piece_size =  100,
+    def __init__(self, env, a1, a2, max_games = -1, piece_size = 100,
                  trainer_a1 = None, trainer_a2 = None):
         """Initalizes a game on an environment between two players"""
         # Call the parent initializer with the desired screen size
@@ -252,6 +252,10 @@ class GameWithConfidences (Visualization):
                         if not (button in ["", "next"]):
                             # Get indicies
                             n, m = [int(i) for i in button.split()]
+                            # Do nothing if action is invalid
+                            if board[m, n] != 0:
+                                button = ""
+                                continue
                             # Make a move
                             move = np.zeros(self.env.shape, dtype = np.int32)
                             move[m, n] = 1
@@ -316,11 +320,10 @@ if __name__ == "__main__":
     from environment import Env
     from agents.Q import Q
     from agents.human import Human
-    from agents.random_agent import RandomAgent
-    from agents.random_plus import RandomAgentPlus
-    size = 4
+    # from agents.random_agent import RandomAgent
+    # from agents.random_plus import RandomAgentPlus
+    size = 5
     e = Env(size)
-    p = Q([size * size, size * size])
-    # p = Human()
+    p = Q([25, 25])
     h = Human()
-    GameWithConfidences(e, p, h, piece_size = 150)
+    GameWithConfidences(e, h, h, piece_size = 150)

@@ -18,21 +18,30 @@ class RandomAgentPlus (Agent):
         player = 2 if env.turn % 2 == 0 else 1
         not_loser = []
         move = zeros(env.shape)
+        winning_move = False
         # Choose a winner and identify non-losers
         for m in possible:
+            # Make move temporarily
             new_state = add(m, state)
-            # Make move if force (winner)
+            # Discard if it is a loss
+            winner = env.is_over(new_state)
+            if winner != 0:
+                continue
+            # If forced loss on opponent, choose move
             if env.forced(new_state):
                 move = m
+                winning_move = True
                 break
-            winner = env.is_over(new_state)
-            if winner == 0:
-                not_loser.append(m)
-        if not equal(move, 0).all():
+            # If neither, remember that it is a not a losing move
+            not_loser.append(m)
+        if winning_move:
+            # Don't choose new move if move already chosen
             pass
         elif len(not_loser) >= 1:
+            # If there are non-losing move, choose one randomly
             move = choice(not_loser)
         else:
+            # If all moves are losses, choose any
             move = choice(possible)
         # Make move
         _, reward = env.act(move)

@@ -18,8 +18,8 @@ class Q (Agent):
         Parameters:
             size (int) - Board side length
             load_file_name (string) - Path to load saved model from
-            gamma (float [0, 1]) - Q-Learning hyperparameter (not used if model is loaded)
-            epsilon (float [0, 1]) - Epsilon for e-greedy exploration (only when training)
+            gamma (float [0, 1]) - Q-Learning hyperparameter
+            epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
             name (string) - Name of the agent and its model
         Note:
@@ -27,7 +27,6 @@ class Q (Agent):
         """
         # Call parent initializer
         super(Q, self).__init__()
-        self.name = "Q"
         self.layers = layers
         self.size = np.int32(np.sqrt(layers[0]))
         self.shape = [self.size, self.size]
@@ -38,11 +37,11 @@ class Q (Agent):
             self.name = "Q{}_regular".format(self.layers)
         else:
             self.name = name
-        self.rotations = []
         self.initialized = False
         # Create a tensorflow session for all processes to run in
         tf.reset_default_graph()
-        self.session = tf.Session()
+        self._graph = tf.Graph()
+        self.session = tf.Session(graph = self._graph)
         # Load model if a file name is given
         if load_file_name != None:
             self.load(load_file_name, "")
@@ -122,129 +121,149 @@ class Q (Agent):
         return self.y.eval(session = self.session,
                            feed_dict = {self.x: [self.flatten(state)]})[0]
 
+    def _init_weights(self, w = None):
+        """Initialize weights"""
+        with self._graph.as_default():
+            if w != None:
+                self.w = [tf.Variable(w[n], name="weights_{}".format(n),
+                                      dtype = tf.float64)
+                          for n in range(len(self.layers) - 1)]
+            else:
+                self.w = [tf.Variable(tf.random_normal([self.layers[n],
+                                                        self.layers[n + 1]],
+                                                       dtype = tf.float64),
+                                      name="weights_{}".format(n))
+                          for n in range(len(self.layers) - 1)]
+            # Get assign opss
+            self._weight_assign_ph = [tf.placeholder(tf.float64,
+                                                     shape = [self.layers[n],
+                                                              self.layers[n + 1]])
+                                      for n in range(len(self.layers) - 1)]
+            self._weight_assign = [self.w[n].assign(self._weight_assign_ph[n])
+                                   for n in range(len(self.layers) - 1)]
+
+    def _init_biases(self, b = None):
+        """Initialize biases"""
+        with self._graph.as_default():
+            if b != None:
+                self.b = [tf.Variable(b[n], name = "biases_{}".format(n),
+                                      dtype = tf.float64)
+                          for n in range(len(self.layers) - 1)]
+            else:
+                self.b = [tf.Variable(tf.random_normal([1, self.layers[n + 1]],
+                                                       dtype = tf.float64),
+                                      name = "biases_{}".format(n))
+                          for n in range(len(self.layers) - 1)]
+            # Get assign opss
+            self._bias_assign_ph = [tf.placeholder(tf.float64,
+                                                     shape = [1, self.layers[n + 1]])
+                                      for n in range(len(self.layers) - 1)]
+            self._bias_assign = [self.b[n].assign(self._bias_assign_ph[n])
+                                   for n in range(len(self.layers) - 1)]
+
+    def _feed(self, inp, n = 0):
+        """Recursive function for feeding a vector through layers"""
+        # End recursion
+        if n == len(self.layers) - 2:
+            # Minus 2 because final layer does no math (-1) and the lists start at zero (-1)
+            return tf.matmul(inp, self.w[n], name="feedmul{}".format(n)) + self.b[n]
+        # Continue recursion
+        out = tf.add(tf.matmul(inp, self.w[n], name="feedmul{}".format(n)), self.b[n],
+                     name="feedadd{}".format(n))
+        return self._feed(out, n + 1)
+
     def init_model(self, w = None, b = None):
         """
         Randomly intitialize model, if given weights and biases, treat as a re-initialization
         """
-        with tf.name_scope("model"):
-            if (w == None or b == None) or not self.initialized:
-                s = self.layers[0]
-                self.x = tf.placeholder(tf.float32, shape = [None, s], name = "input")
-                # Assign desired values if probided
-                if w != None:
-                    self.w = [tf.Variable(w[n], name = "weights_{}".format(n))
-                              for n in range(len(self.layers) - 1)]
-                else:
-                    self.w = [tf.Variable(tf.random_normal([self.layers[n],
-                                                            self.layers[n + 1]]),
-                                          name = "weights_{}".format(n))
-                              for n in range(len(self.layers) - 1)]
-                if b != None:
-                    self.b = [tf.Variable(b[n], name = "biases_{}".format(n))
-                              for n in range(len(self.layers) - 1)]
-                else:
-                    self.b = [tf.Variable(tf.random_normal([1, self.layers[n + 1]]),
-                                          name = "biases_{}".format(n))
-                              for n in range(len(self.layers) - 1)]
-                # Predicted output
-                def feed(inp, n=0):
-                    """Recursive function for feeding a vector through layers"""
-                    # End recursion
-                    if n == len(self.layers) - 2:
-                        # Minus 2 because final layer does no math (-1) and the lists start at zero (-1)
-                        return tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)) + self.b[n]
-                    # Continue recursion
-                    out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
-                                 name = "feedadd{}".format(n))
-                    return feed(out, n + 1)
-                self.y = feed(self.x)
-                # Tensorboard visualizations
-                for i, weight in enumerate(self.w):
-                    self.variable_summaries(weight, "weight" + str(i))
-                for i, bias in enumerate(self.b):
-                    self.variable_summaries(bias, "Bias" + str(i))
-                # Initialize the variables
-                self.session.run(tf.global_variables_initializer())
-            # If the agent has already been initialized but is being loaded
-            elif not (w == None or b == None) and self.initialized:
-                print("Parameters loaded from file.")
-                for old, new in zip(self.w, w):
-                    self.session.run(old.assign(new))
-                for old, new in zip(self.b, b):
-                    self.session.run(old.assign(new))
+        with self._graph.as_default():
+            with tf.name_scope("model"):
+                if (w == None or b == None) or not self.initialized:
+                    s = self.layers[0]
+                    self.x = tf.placeholder(tf.float64, shape = [None, s], name = "input")
+                    self._init_weights(w)
+                    self._init_biases(b)
+                    # Predicted output
+                    self.y = self._feed(self.x)
+                    # Tensorboard visualizations
+                    for i, weight in enumerate(self.w):
+                        self.variable_summaries(weight, "weight" + str(i))
+                    for i, bias in enumerate(self.b):
+                        self.variable_summaries(bias, "Bias" + str(i))
+                    # Initialize the variables
+                    self.session.run(tf.global_variables_initializer())
+                    self.initialized = True
+                # If the agent has already been initialized but is being loaded
+                """
+                elif not (w == None or b == None) and self.initialized:
+                    for old, new in zip(self.w, w):
+                        self.session.run(old.assign(new))
+                    for old, new in zip(self.b, b):
+                        self.session.run(old.assign(new))
+                    print("Parameters loaded from file.")"""
+
+    def _l2_recurse(self, x, n = 0):
+        """Recursively adds all weight norms"""
+        if len(x) <= 1:
+            return tf.nn.l2_loss(x[0], name="L2_{}".format(n))
+        else:
+            return tf.add(tf.nn.l2_loss(x[0], name="L2_{}".format(n)),
+                          self._l2_recurse(x[1:], n + 1))
 
     def init_training_vars(self):
         """Initialize training procedure"""
-        with tf.name_scope("training"):
-            # Targets
-            self.q_targets = tf.placeholder(shape = [None, self.layers[0]],
-                                             dtype = tf.float32, name = "targets")
-            # L2 Regularization
-            with tf.name_scope("regularization"):
-                def l2_recurse(x, n = 0):
-                    """Recursively adds all weight norms"""
-                    if len(x) <= 1:
-                        return tf.nn.l2_loss(x[0], name = "L2_{}".format(n))
-                    else:
-                        return tf.add(tf.nn.l2_loss(x[0], name = "L2_{}".format(n)),
-                                      l2_recurse(x[1:], n + 1))
-                l2 = l2_recurse(self.w)
-                tf.summary.scalar("L2", l2)
-            # tf.summary.scalar("L2", l2)
-            # Learning rate
-            self.learn_rate = tf.placeholder(tf.float32)
-            # Regular loss
-            data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y), name = "data_loss")
-            tf.summary.scalar("Data_loss", data_loss)
-            # Loss and Regularization
-            loss = tf.verify_tensor_all_finite(
-                tf.reduce_mean(tf.add(data_loss, tf.constant(self.beta, name = "beta") * l2),
-                              name = "loss"),
-                msg = "Inf or NaN values",
-                name = "FiniteVerify"
-            )
-            tf.summary.scalar("Loss", loss)
-            # tf.summary.scalar("loss", loss)
-            # Optimizer
-            self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                self.learn_rate,
-                                                                name = "optimizer")
-            # Updater (minimizer)
-            self.update_op = self._optimizer.minimize(loss, name ="update")
-            # Tensorboard
-            self.summary_op = tf.summary.merge_all()
+        with self._graph.as_default():
+            with tf.name_scope("training"):
+                # Targets
+                self.q_targets = tf.placeholder(shape = [None, self.layers[0]],
+                                                 dtype = tf.float64, name = "targets")
+                # L2 Regularization
+                with tf.name_scope("regularization"):
+                    l2 = self._l2_recurse(self.w)
+                    tf.summary.scalar("L2", l2)
+                # tf.summary.scalar("L2", l2)
+                # Learning rate
+                self.learn_rate = tf.placeholder(tf.float32)
+                # Regular loss
+                data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y), name = "data_loss")
+                tf.summary.scalar("Data_loss", data_loss)
+                # Loss and Regularization
+                self.beta_ph = tf.placeholder(tf.float64, name = "beta")
+                loss = tf.verify_tensor_all_finite(
+                    tf.reduce_mean(tf.add(data_loss, self.beta_ph * l2), name = "loss"),
+                    msg = "Inf or NaN values",
+                    name = "FiniteVerify"
+                )
+                tf.summary.scalar("Loss", loss)
+                # tf.summary.scalar("loss", loss)
+                # Optimizer
+                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                    self.learn_rate,
+                                                                    name = "optimizer")
+                # Updater (minimizer)
+                self.update_op = self._optimizer.minimize(loss, name ="update")
+                # Tensorboard
+                self.summary_op = tf.summary.merge_all()
 
-    def update(self, states, targets, learn_rate = .01):
+    def update(self, states, targets, learn_rate = .01, beta = None):
         """
         Update (train) a model over a given set of states and targets
         Parameters:
             states (List of (N, N) arrays) - List of states (inputs)
             targets (List of (N, N) arrays) - Targets for each state (labels)
             learn_rate (float) - Learning rate for the update
+            beta (float) - L2 Regularization constant (default self.beta)
         Returns:
             tf.summary - The output of the merged summary operation
         """
+        if beta == None:
+            beta = self.beta
         # Reshape
         states = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         targets = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
-        feed_dict = {self.x: states, self.q_targets: targets, self.learn_rate: learn_rate}
+        feed_dict = {self.x: states, self.q_targets: targets,
+                     self.learn_rate: learn_rate, self.beta_ph: beta}
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
-
-    def get_weight(self, index):
-        """Gets an evaluated weight matrix from layer 'index'"""
-        return self.w[index].eval(session = self.session)
-
-    def get_weights(self):
-        """Gets all weight matricies"""
-        return [self.get_weight(i) for i in range(len(self.w))]
-
-    def get_bias(self, index):
-        """Gets an evaluated bias matrix from layer 'index'"""
-        return self.b[index].eval(session = self.session)
-
-    def get_biases(self):
-        """Gets all bias matricies"""
-        return [self.get_bias(i) for i in range(len(self.b))]
 
     def save(self, name = None, prefix = "agents/params/"):
         """
@@ -253,8 +272,8 @@ class Q (Agent):
             name (string) - File name for save file
             prefix (string) - The file path prefix
         """
-        if not name:
-            name = prefix + name + ".npz"
+        if name == None:
+            name = prefix + self.name + ".npz"
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b]},
@@ -305,3 +324,39 @@ class Q (Agent):
             tf.summary.scalar('min', tf.reduce_min(var))
             # Log var as a histogram
             tf.summary.histogram('histogram', var)
+
+    def get_weight(self, index):
+        """Gets an evaluated weight matrix from layer 'index'"""
+        return self.w[index].eval(session = self.session)
+
+    def get_weights(self):
+        """Gets all weight matricies"""
+        return [self.get_weight(i) for i in range(len(self.w))]
+
+    def get_bias(self, index):
+        """Gets an evaluated bias matrix from layer 'index'"""
+        return self.b[index].eval(session = self.session)
+
+    def get_biases(self):
+        """Gets all bias matricies"""
+        return [self.get_bias(i) for i in range(len(self.b))]
+
+    def set_weight(self, index, new_w):
+        """Replace a given weight with new_w"""
+        self.session.run(self._weight_assign[index],
+                         feed_dict = {self._weight_assign_ph[index]: new_w})
+
+    def set_bias(self, index, new_b):
+        """Replace a given bias with new_b"""
+        self.session.run(self._bias_assign[index],
+                         feed_dict = {self._bias_assign_ph[index]: new_b})
+
+    def set_weights(self, new_w):
+        """Replace all weights with new_w"""
+        for i in range(len(self.w)):
+            self.set_weight(i, new_w[i])
+
+    def set_biases(self, new_b):
+        """Replace all biases with new_b"""
+        for i in range(len(self.b)):
+            self.set_bias(i, new_b[i])

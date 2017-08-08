@@ -177,6 +177,9 @@ class Env (object):
         # Loop for multiple games
         played_games = 0
         self._end = False
+        if not display:
+            # print("Playing ")
+            display_interval = games // 10 if games > 10 else 1
         while played_games < games and not self._end:
             self.reset()
             played_games += 1
@@ -184,6 +187,10 @@ class Env (object):
             done = False
             illegal = False
             # Main game loop
+            if not display:
+                if played_games % display_interval == 0:
+                    # print("*", end = "")
+                    print("Played Games: {}".format(played_games))
             if display:
                     self.display()
             while not done and not self._end and not self._illegal:
@@ -219,3 +226,6 @@ class Env (object):
             if display and not self._illegal:
                 self.display()
                 print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
+        if not display:
+            # print(" Done")
+            pass
