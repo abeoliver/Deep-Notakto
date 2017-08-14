@@ -8,3 +8,5 @@ deepnotakto/__pycache__/
 *.pyc
 
 *.ABEOLIVER
+
+*.npz
