@@ -10,7 +10,7 @@ import agents.random_plus as random_plus
 
 e = env.Env(3)
 print("Initializing Players")
-p1 = activated.QSigmoidHidden([9, 100, 200, 100, 9], gamma = .6,
+p1 = activated.SigmoidHidden([9, 100, 200, 100, 9], gamma = .6,
                               epsilon = .1, beta = 5.0)
 p1_train = trainer.Trainer(p1, 1e-5)
 p2 = random_plus.RandomAgentPlus()

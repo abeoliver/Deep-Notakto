@@ -161,7 +161,8 @@ class Env (object):
         self.__str__()
         print()
         
-    def play(self, a1, a2, games = 1, display = False, trainer_a1 = None, trainer_a2 = None):
+    def play(self, a1, a2, games = 1, trainer_a1 = None, trainer_a2 = None,
+             display = False, server_display = False):
         """
         Plays two agents against eachother
         Parameters:
@@ -178,7 +179,10 @@ class Env (object):
         played_games = 0
         self._end = False
         if not display:
-            # print("Playing ")
+            if server_display:
+                print("Playing Training Games...")
+            else:
+                print("Playing ", end = "")
             display_interval = games // 10 if games > 10 else 1
         while played_games < games and not self._end:
             self.reset()
@@ -187,10 +191,9 @@ class Env (object):
             done = False
             illegal = False
             # Main game loop
-            if not display:
+            if not display and not server_display:
                 if played_games % display_interval == 0:
-                    # print("*", end = "")
-                    print("Played Games: {}".format(played_games))
+                    print("*", end = "")
             if display:
                     self.display()
             while not done and not self._end and not self._illegal:
@@ -226,6 +229,6 @@ class Env (object):
             if display and not self._illegal:
                 self.display()
                 print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-        if not display:
-            # print(" Done")
+        if not display and not server_display:
+            print(" Done")
             pass
