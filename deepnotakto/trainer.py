@@ -7,7 +7,7 @@ import tensorflow as tf
 from random import shuffle
 
 class Trainer (object):
-    def __init__(self, agent, learn_rate = 1e-4):
+    def __init__(self, agent, learn_rate = 1e-4, record = True):
         """
         Initializes a Trainer object
         Parameter:
@@ -19,15 +19,16 @@ class Trainer (object):
         self.writer = tf.summary.FileWriter("tensorboard/" + agent.name,
                                             agent.session.graph)
         self.learn_rate = learn_rate
+        self.record = record
 
-
-    def get_online(self, learn_rate = None):
+    def get_online(self, learn_rate = None, **kwargs):
         """Gets a callable function of online with a given learning rate"""
         if learn_rate == None:
             learn_rate = self.learn_rate
-        return lambda x, y, z: self.online(x, y, z, learn_rate)
+        return lambda x, y, z: self.online(x, y, z, learn_rate, **kwargs)
 
-    def online(self, state, action, reward, learn_rate = None):
+    def online(self, state, action, reward, learn_rate = None,
+               record = None, **kwargs):
         """
         Train the on a single state and reward (usually in an environment)
         Parameters:
@@ -35,14 +36,21 @@ class Trainer (object):
             action ((N, N) array) - Action applied
             reward (float) - Reward for action on state
             learn_rate (float) - Learning rate
+            record (bool) - Record tensorboard info? (instance default if none)
         """
         if learn_rate == None:
             learn_rate = self.learn_rate
-        target = self.agent.target(state, action, self.agent.get_Q(state), reward)
-        self.agent.update([state], [target], learn_rate)
+        if record == None:
+            record = self.record
+        target = self.agent.target(state, action,
+                                   self.agent.get_Q(state), reward, **kwargs)
+        summary = self.agent.update([state], [target], learn_rate)
+        if record:
+            self.writer.add_summary(summary, self.iteration)
+        self.iteration += 1
 
     def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
-                learn_rate = None, silence = False):
+                learn_rate = None, silence = False, record = None):
         """
         Trains the agent with a Markov Decision Model
         Parameters:
@@ -53,6 +61,7 @@ class Trainer (object):
             epochs (int) - Number of iterations over the entire dataset
             learn_rate (float) - Learning rate
             silence (bool) - Print to stdout?
+            record (bool) - Record tensorboard info? (instance default if none)
         Note:
             Targets are caculated at the beginning of each epoch.
             Therefore, all targets in a given epochs use the same
@@ -72,7 +81,7 @@ class Trainer (object):
                        for (state, action, reward) in \
                        zip(states, actions, rewards)]
             # Batch train once
-            self.batch(states, targets, batch_size, 1, learn_rate, True)
+            self.batch(states, targets, batch_size, 1, learn_rate, True, record)
             # Output
             if not silence:
                 if epoch % display_interval == 0:
@@ -81,7 +90,7 @@ class Trainer (object):
             print(" Done")
 
     def batch(self, states, targets, batch_size, epochs = 1,
-              learn_rate = .0001, silence = False):
+              learn_rate = .0001, silence = False, record = None):
         """
         Trains the agent over a batch of states and targets
         Parameters:
@@ -91,7 +100,10 @@ class Trainer (object):
             epochs (int) - Number of iterations over the entire dataset
             learn_rate (float) - Learning rate
             silence (bool) - Print to stdout?
+            record (bool) - Record tensorboard info? (instance default if none)
         """
+        if record == None:
+            record = self.record
         # Output
         if not silence:
             print("Training ", end="")
@@ -112,11 +124,12 @@ class Trainer (object):
                 self.iteration += 1
                 # Get the states and targets from the indidicies of the
                 # batch and pass into update
-                summary = self.agent.update([states[b] for b in batch],
-                                             [targets[b] for b in batch],
-                                             learn_rate)
-                # Write summary to file
-                self.writer.add_summary(summary, self.iteration)
+                if record:
+                    summary = self.agent.update([states[b] for b in batch],
+                                                 [targets[b] for b in batch],
+                                                 learn_rate)
+                    # Write summary to file
+                    self.writer.add_summary(summary, self.iteration)
                 # Display
                 if not silence:
                     display_iterations += 1
