@@ -164,7 +164,7 @@ class Env (object):
         print()
         
     def play(self, a1, a2, games = 1, trainer_a1 = None, trainer_a2 = None,
-             display = False, server_display = False, final_reward = False,
+             display = False, final_reward = False,
              silence = False):
         """
         Plays two agents against eachother
@@ -190,11 +190,8 @@ class Env (object):
         a2.reset_buffer()
         self._end = False
         if not display and not silence:
-            if server_display:
-                print("Playing Training Games...")
-            else:
-                print("Playing ", end = "")
-            display_interval = games // 10 if games > 10 else 1
+            print("Playing ", end = "")
+        display_interval = games // 10 if games > 10 else 1
         # ---------- GAME SET LOOP ----------
         while played_games < games and not self._end:
             self.reset()
@@ -203,7 +200,7 @@ class Env (object):
             done = False
             illegal = False
             # ---------- Main game loop ----------
-            if not display and not server_display and not silence:
+            if not display and not silence:
                 if played_games % display_interval == 0:
                     print("*", end = "")
             if display and not silence:
@@ -262,6 +259,6 @@ class Env (object):
                 self.display()
                 print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
         # Server display
-        if not display and not server_display and not silence:
+        if not display and not silence:
             print(" Done")
         # ---------- END GAME SET LOOP ----------
