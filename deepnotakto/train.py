@@ -10,6 +10,7 @@ import agents.random_plus as random_plus
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 e = env.Env(4)
 print("Initializing Players...")
+e = env.Env(4)
 p2 = Q.Q([16, 100, 100, 16], gamma = .3, epsilon = 0.1, beta = 3.0, name = "4x4")
 p2_train = trainer.Trainer(p2, 1e-8)
 p1 = random_plus.RandomAgentPlus()

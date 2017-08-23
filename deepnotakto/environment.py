@@ -164,7 +164,8 @@ class Env (object):
         print()
         
     def play(self, a1, a2, games = 1, trainer_a1 = None, trainer_a2 = None,
-             display = False, server_display = False, final_reward = False):
+             display = False, server_display = False, final_reward = False,
+             silence = False):
         """
         Plays two agents against eachother
         Parameters:
@@ -188,7 +189,7 @@ class Env (object):
         a1.reset_buffer()
         a2.reset_buffer()
         self._end = False
-        if not display:
+        if not display and not silence:
             if server_display:
                 print("Playing Training Games...")
             else:
@@ -202,16 +203,16 @@ class Env (object):
             done = False
             illegal = False
             # ---------- Main game loop ----------
-            if not display and not server_display:
+            if not display and not server_display and not silence:
                 if played_games % display_interval == 0:
                     print("*", end = "")
-            if display:
+            if display and not silence:
                     self.display()
             # Play while user has not quit and players play legally
             while not done and not self._end and not self._illegal:
                 # Copy the board for later comparison pre and post move
                 b_copy = copy(self.board)
-                if display:
+                if display and not silence:
                     print("Turn #{}".format(self.turn))
                 # Play the agent corresponding to the current turn
                 if self.turn % 2 == 0:
@@ -237,7 +238,7 @@ class Env (object):
 
                 # Catch double illegal moves and end the game if they exist
                 if np.equal(b_copy, self.board).all() and self.turn != 0:
-                    if display:
+                    if display and not silence:
                         print("Agent attempted an illegal move")
                     done = True
                     self._illegal = True
@@ -257,10 +258,10 @@ class Env (object):
                 trainer_a2(ep_s, ep_a, ep_r)
 
             # Show the final board if desired
-            if display and not self._illegal:
+            if display and not self._illegal and not silence:
                 self.display()
                 print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
         # Server display
-        if not display and not server_display:
+        if not display and not server_display and not silence:
             print(" Done")
         # ---------- END GAME SET LOOP ----------
