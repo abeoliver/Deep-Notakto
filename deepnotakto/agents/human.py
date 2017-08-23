@@ -23,7 +23,7 @@ class Human (Agent):
         action = np.zeros(env.shape)
         action[move[0], move[1]] = 1
         _, reward = env.act(action)
-        self.record(state, action, reward)
+        self.add_buffer(state, action, reward)
         return [state, action, reward]
     
     def get_turn(self, env):

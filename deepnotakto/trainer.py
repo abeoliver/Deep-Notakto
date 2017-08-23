@@ -5,27 +5,36 @@
 import numpy as np
 import tensorflow as tf
 from random import shuffle
+from util import rotate as rotate_func
 
 class Trainer (object):
-    def __init__(self, agent, learn_rate = 1e-4, record = True):
+    def __init__(self, agent, learn_rate = 1e-4, record = True,
+                 change_agent_epsilon = False, epsilon_func = None):
         """
         Initializes a Trainer object
         Parameter:
             agent (Q.Q) - Q Agent to train
             learn_rate (float) - Learning rate
+            record (bool) - Record tensorboard data?
         """
         self.agent = agent
         self.iteration = 0
-        self.writer = tf.summary.FileWriter("tensorboard/" + agent.name,
-                                            agent.session.graph)
+        self.writer = tf.summary.FileWriter("tensorboard/" + agent.name)
         self.learn_rate = learn_rate
         self.record = record
+        self.change_agent_epsilon = change_agent_epsilon
+        if epsilon_func == None:
+            self.epsilon_func = lambda x: 1.0 / (x + 1)
+        else:
+            self.epsilon_func = epsilon_func
 
     def get_online(self, learn_rate = None, **kwargs):
         """Gets a callable function of online with a given learning rate"""
         if learn_rate == None:
             learn_rate = self.learn_rate
-        return lambda x, y, z: self.online(x, y, z, learn_rate, **kwargs)
+        f = lambda s, a, r: self.online(s, a, r, learn_rate, **kwargs)
+        f._type = "online"
+        return f
 
     def online(self, state, action, reward, learn_rate = None,
                record = None, **kwargs):
@@ -48,6 +57,35 @@ class Trainer (object):
         if record:
             self.writer.add_summary(summary, self.iteration)
         self.iteration += 1
+        if self.change_agent_epsilon:
+            self.change_epsilon()
+
+    def get_episode(self, learn_rate = None, rotate = False, **kwargs):
+        """Gets a callable function of episode with a given learning rate"""
+        if learn_rate == None:
+            learn_rate = self.learn_rate
+        f = lambda s, a, r: self.episode(s, a, r, learn_rate, rotate, **kwargs)
+        f._type = "episode"
+        return f
+
+    def episode(self, states, actions, rewards, learn_rate = None, rotate = False,
+                record = None, **kwargs):
+        if learn_rate == None:
+            learn_rate = self.learn_rate
+        if record == None:
+            record = self.record
+        targets = [self.agent.target(state, action, self.agent.get_Q(state),
+                                     reward, **kwargs)
+                   for state, action, reward in
+                   zip(states, actions, rewards)]
+        if rotate:
+            states, targets = self.get_rotations(states, targets)
+        summary = self.agent.update(states, targets, learn_rate)
+        if record:
+            self.writer.add_summary(summary, self.iteration)
+        self.iteration += 1
+        if self.change_agent_epsilon:
+            self.change_epsilon()
 
     def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
                 learn_rate = None, silence = False, record = None):
@@ -120,8 +158,6 @@ class Trainer (object):
             batches = list(self._chunk(order, batch_size))
             # Train over each minibatch
             for batch in batches:
-                # Increase iteration counter
-                self.iteration += 1
                 # Get the states and targets from the indidicies of the
                 # batch and pass into update
                 if record:
@@ -130,43 +166,42 @@ class Trainer (object):
                                                  learn_rate)
                     # Write summary to file
                     self.writer.add_summary(summary, self.iteration)
+
                 # Display
                 if not silence:
                     display_iterations += 1
                     if display_iterations % display_interval == 0:
                         print("*", end = "")
+            # Increase iteration counter
+            self.iteration += 1
         if not silence:
             print(" Done")
 
-    def change_epsilon(self, func = lambda x: 1.0 / (x + 1)):
+    def change_epsilon(self):
         """Changes the epsilon for e-greedy exploration as a function of episode number"""
-        self.agent.epsilon = func(self.iteration)
+        self.agent.epsilon = self.epsilon_func(self.iteration)
 
     def get_rotations(self, states, targets):
         """Train over the rotated versions of each state and reward"""
         # Copy states so as not to edit outside of scope
-        states = copy(states)
-        # Reshape targets for rotation
-        targets = [np.reshape(t, states[0].shape) for t in targets]
+        states = list(states)
         # Collect rotated versions of each state and target
-        new_tates = []
+        new_states = []
         new_targets = []
-        print("Rotating ... ", end = "")
         for s, t in zip(states, targets):
             ns = s
             nt = t
             for i in range(3):
-                rs = self.rotate(ns)
-                rt = self.rotate(nt)
+                rs = rotate_func(ns)
+                rt = rotate_func(nt)
                 new_states.append(rs)
-                new_targets.append(np.reshape(rt, -1))
+                new_targets.append(rt)
                 ns = rs
                 nt = rt
-        print("Done")
         # Combine lists
         all_states = states + new_states
         all_targets = targets + new_targets
-        return [allStates, allTargets]
+        return [all_states, all_targets]
 
     def _chunk(self, l, n):
         """

@@ -104,7 +104,9 @@ class Visualization (object):
 
 class GameWithConfidences (Visualization):
     def __init__(self, env, a1, a2, max_games = -1, piece_size = 100,
-                 trainer_a1 = None, trainer_a2 = None):
+                 trainer_a1 = None, trainer_a2 = None,
+                 allow_human_invalid_move = False, final_reward = False,
+                 episode_train = False, show_rank = False):
         """Initalizes a game on an environment between two players"""
         # Call the parent initializer with the desired screen size
         self.shape = env.shape
@@ -116,10 +118,14 @@ class GameWithConfidences (Visualization):
         self.env = env
         # 0 or negative max_games means indefinite
         self.max_games = max_games
+        self.final_reward = final_reward
+        self.episode_train = episode_train
+        self.show_rank = show_rank
         self.a1 = a1
         self.a2 = a2
         self.trainer_a1 = trainer_a1
         self.trainer_a2 = trainer_a2
+        self.allow_human_invalid_move = allow_human_invalid_move
         self.a1_human = a1.name == "Human"
         self.a2_human = a2.name == "Human"
         self.define_buttons()
@@ -181,6 +187,7 @@ class GameWithConfidences (Visualization):
                                          self.piece_size,
                                          self.board_colorfunc)
         self.draw_rects(board_rects, self.piece_size // 10 , self.colors["white"])
+        self.update()
 
     def board_colorfunc(self, x):
         """Color function for a regular board"""
@@ -208,10 +215,23 @@ class GameWithConfidences (Visualization):
                 button = self.get_button(event.pos)
         return button
 
+    def record(self, state, action, reward):
+        """Records and (maybe) trains after a move"""
+        if self.env.turn % 2 == 0:
+            self.a1.add_buffer(state, action, reward)
+            if self.trainer_a1 != None and not self.episode_train:
+                self.trainer_a1(state, action, reward)
+        elif self.env.turn % 2 == 1:
+            self.a2.add_buffer(state, action, reward)
+            if self.trainer_a2 != None and not self.episode_train:
+                self.trainer_a2(state, action, reward)
+
     def run(self):
         """Runs the game between the two agents"""
-        # Play games until exited
+        # ---------- GAME SET LOOP ----------
         games = 0
+        self.a1.reset_buffer()
+        self.a2.reset_buffer()
         while True:
             games += 1
             # Reset environment
@@ -220,64 +240,60 @@ class GameWithConfidences (Visualization):
             done = False
             # If the first player is a computer, have it play
             if not self.a1_human:
-                qs = np.reshape(self.a1.get_Q(self.env.observe()), self.shape)
+                qs = self.a1.get_Q(self.env.observe())
                 state, action, reward = self.a1.act(self.env)
-                if self.trainer_a1 != None:
-                    self.trainer_a1(state, action, reward)
+                self.record(state, action, reward)
                 self.env.turn += 1
                 banner = "PLAYER 2"
             else:
                 # Banner
-                banner = "PLAYER 1"
+                banner = "P LAYER 1"
                 qs = np.zeros(self.shape)
             board = self.env.observe()
             button = ""
-            # Play game
+            # ---------- MAIN GAME ----------
             while not done:
                 # Run event loop, drawing, and update
                 button = self.events()
                 banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                 self.display(qs, board, banner, next = True)
-                self.update()
-                # Run human turn if turn
+                # ---------- HUMAN MOVE GUI LOOP (if needed) ----------
                 if (self.env.turn % 2 == 0 and self.a1_human) or \
                     (self.env.turn % 2 == 1 and self.a2_human):
-                    # Human turn
                     while True:
                         # Run event loop, drawing, and update
+                        self.display(qs, board, banner, next=True)
                         button = self.events()
-                        self.display(qs, board, banner, next = True)
-                        self.update()
                         # Parse mouse input
                         if not (button in ["", "next"]):
                             # Get indicies
                             n, m = [int(i) for i in button.split()]
-                            # Do nothing if action is invalid
+                            # If the move is invalid
                             if board[m, n] != 0:
-                                button = ""
-                                continue
+                                if not self.allow_human_invalid_move:
+                                    button = ""
+                                    continue
+                                else:
+                                    banner = "Player attempted illegal move"
+                                    done = True
                             # Make a move
                             move = np.zeros(self.env.shape, dtype = np.int32)
                             move[m, n] = 1
                             # Play the move
                             _, reward = self.env.act(move)
                             # Record move and train
-                            if self.env.turn % 2 == 0:
-                                self.a1.record(board, move, reward)
-                                if self.trainer_a1 != None:
-                                    self.trainer_a1(board, move, reward)
-                            elif self.env.turn % 2 == 1:
-                                self.a2.record(board, move, reward)
-                                if self.trainer_a2 != None:
-                                    self.trainer_a2(board, move, reward)
+                            self.record(board, move, reward)
                             self.env.turn += 1
                             break
+                    if done:
+                        break
                     # Continue game loop
                     board = self.env.observe()
                     done = False if self.env.is_over() == 0 else True
                     if done: break
                     else: button = "next"
-                # On user command, run next agent turn
+                # ---------- END HUMAN MOVE GUI LOOP ----------
+                # ---------- COMPUTER MOVE (if needed) ----------
                 if button == "next" and not (self.a1_human and self.a2_human):
                     button = ""
                     # Update banner
@@ -287,43 +303,57 @@ class GameWithConfidences (Visualization):
                     b_copy = copy(self.env.board)
                     # Play the agent corresponding to the current turn
                     if self.env.turn % 2 == 0:
-                        qs = np.reshape(self.a1.get_Q(b_copy), self.shape)
+                        qs = self.a1.get_Q(b_copy)
                         state, action, reward = self.a1.act(self.env)
-                        if self.trainer_a1 != None:
-                            self.trainer_a1(state, action, reward)
+                        self.record(state, action, reward)
                     else:
-                        qs = np.reshape(self.a2.get_Q(b_copy), self.shape)
+                        qs = self.a2.get_Q(b_copy)
                         state, action, reward = self.a2.act(self.env)
-                        if self.trainer_a2 != None:
-                            self.trainer_a2(state, action, reward)
+                        self.record(state, action, reward)
                     board = self.env.observe()
                     # Change turn
                     self.env.turn += 1
                     # Catch double illegal moves
-                    if np.equal(b_copy, self.env.board).all() and self.env.turn != 0:
+                    if self.env.turn != 0 and np.equal(b_copy, self.env.board).all():
                         banner = "Player attempted illegal move"
                         done = True
                         break
                     done = False if self.env.is_over() == 0 else True
+                # ---------- END COMPUTER MOVE ----------
+            # ---------- END MAIN GAME ----------
             if banner != "Player attempted illegal move":
                 banner = "PLAYER {} WINS".format(self.env.is_over())
-            # Leave on final screen until clicked forward
+            # Save game buffers
+            self.a1.save_buffer(self.final_reward)
+            self.a2.save_buffer(self.final_reward)
+            # Train by episode
+            if self.episode_train:
+                if self.trainer_a1 != None:
+                    ep_s, ep_a, ep_r, = self.a1.get_last_buffer()
+                    self.trainer_a1(ep_s, ep_a, ep_r)
+                if self.trainer_a2 != None:
+                    ep_s, ep_a, ep_r, = self.a2.get_last_buffer()
+                    self.trainer_a2(ep_s, ep_a, ep_r)
+            # ---------- FINAL SCREEN ----------
             while True:
                 allow_next = (games < self.max_games) or (self.max_games <= 0)
                 button = self.events()
                 self.display(qs, board, banner, next = allow_next)
-                self.update()
                 if button == "next" and allow_next:
                     break
+            # ---------- END FINAL SCREEN ----------
+        # ---------- END GAME SET LOOP ----------
 
 if __name__ == "__main__":
     from environment import Env
     from agents.Q import Q
+    import agents.activated as activated
     from agents.human import Human
     # from agents.random_agent import RandomAgent
     # from agents.random_plus import RandomAgentPlus
     size = 5
     e = Env(size)
-    p = Q([25, 25])
+    np = activated.QSigmoidHidden([9, 100, 200, 100, 9], gamma=.6, epsilon=.1, beta=5.0,
+                                 load_file_name="agents/params/Q[9, 100, 200, 100, 9]_sigmoid_hidden.pz")
     h = Human()
-    GameWithConfidences(e, h, h, piece_size = 150)
+    GameWithConfidences(e, p, h, piece_size = 100)

@@ -26,9 +26,9 @@ def rotate(x):
 
 def rotate_batch(states, actions, rewards):
     """Rotates all states and actions because game is rotation invariant"""
-    new_states = []
-    new_actions = []
-    new_rewards = []
+    new_states = list(states)
+    new_actions = list(actions)
+    new_rewards = list(rewards)
     for i in range(len(states)):
         s = states[i]
         a = actions[i]

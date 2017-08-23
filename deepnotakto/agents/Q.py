@@ -71,14 +71,14 @@ class Q (Agent):
         _, reward = env.act(action)
 
         # Record state, action, reward
-        self.record(current_state, action, reward)
+        self.add_buffer(current_state, action, reward)
 
         return [current_state, action, reward]
 
-    def target(self, state, action, q, reward):
+    def target(self, state, action, q, reward, **kwargs):
         """Calculate the target for the network for a given situation"""
         # Apply action
-        new_state = np.add(state, np.reshape(action, self.shape))
+        new_state = np.add(state, action)
         # Get max Q values after any move opponent could make
         new_Q_max = []
         for move in self.possible_moves(new_state):
@@ -89,7 +89,7 @@ class Q (Agent):
         # Get max of all Q values
         maxQ = np.max(new_Q_max)
         # Update Q for target
-        Q = np.reshape(q, -1)
+        Q = np.reshape(np.copy(q), -1)
         Q[np.argmax(action)] = reward + self.gamma * maxQ
         return np.reshape(Q, new_state.shape)
 
@@ -118,8 +118,9 @@ class Q (Agent):
             training (bool) - Should dropout be applied or not
         """
         # Pass the state to the model and get array of Q-values
-        return self.y.eval(session = self.session,
-                           feed_dict = {self.x: [self.flatten(state)]})[0]
+        return np.reshape(self.y.eval(session = self.session,
+                                      feed_dict = {self.x: [np.reshape(state, -1)]})[0],
+                          self.shape)
 
     def _init_weights(self, w = None):
         """Initialize weights"""
@@ -178,29 +179,26 @@ class Q (Agent):
         """
         with self._graph.as_default():
             with tf.name_scope("model"):
-                if (w == None or b == None) or not self.initialized:
+                if not self.initialized:
                     s = self.layers[0]
                     self.x = tf.placeholder(tf.float64, shape = [None, s], name = "input")
                     self._init_weights(w)
-                    self._init_biases(b)
-                    # Predicted output
-                    self.y = self._feed(self.x)
                     # Tensorboard visualizations
                     for i, weight in enumerate(self.w):
-                        self.variable_summaries(weight, "weight" + str(i))
+                        self.variable_summaries(weight, "weight_" + str(i))
+                    self._init_biases(b)
+                    # Tensorboard visualizations
                     for i, bias in enumerate(self.b):
-                        self.variable_summaries(bias, "Bias" + str(i))
-                    # Initialize the variables
-                    self.session.run(tf.global_variables_initializer())
+                        self.variable_summaries(bias, "bias_" + str(i))
+                    # Predicted output
+                    self.y = self._feed(self.x)
                     self.initialized = True
-                # If the agent has already been initialized but is being loaded
-                """
-                elif not (w == None or b == None) and self.initialized:
-                    for old, new in zip(self.w, w):
-                        self.session.run(old.assign(new))
-                    for old, new in zip(self.b, b):
-                        self.session.run(old.assign(new))
-                    print("Parameters loaded from file.")"""
+                    self.session.run(tf.global_variables_initializer())
+                else:
+                    if w != None:
+                        self.set_weights(w)
+                    if b != None:
+                        self.set_biases(b)
 
     def _l2_recurse(self, x, n = 0):
         """Recursively adds all weight norms"""
@@ -219,9 +217,8 @@ class Q (Agent):
                                                  dtype = tf.float64, name = "targets")
                 # L2 Regularization
                 with tf.name_scope("regularization"):
-                    l2 = self._l2_recurse(self.w)
-                    tf.summary.scalar("L2", l2)
-                # tf.summary.scalar("L2", l2)
+                    self.l2 = self._l2_recurse(self.w)
+                    tf.summary.scalar("L2", self.l2)
                 # Learning rate
                 self.learn_rate = tf.placeholder(tf.float32)
                 # Regular loss
@@ -230,12 +227,11 @@ class Q (Agent):
                 # Loss and Regularization
                 self.beta_ph = tf.placeholder(tf.float64, name = "beta")
                 loss = tf.verify_tensor_all_finite(
-                    tf.reduce_mean(tf.add(data_loss, self.beta_ph * l2), name = "loss"),
+                    tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2), name = "loss"),
                     msg = "Inf or NaN values",
                     name = "FiniteVerify"
                 )
                 tf.summary.scalar("Loss", loss)
-                # tf.summary.scalar("loss", loss)
                 # Optimizer
                 self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
                                                                     self.learn_rate,
@@ -273,7 +269,11 @@ class Q (Agent):
             prefix (string) - The file path prefix
         """
         if name == None:
-            name = prefix + self.name + ".npz"
+            name = self.name
+        if "/" in name:
+            name += ".npz"
+        else:
+            name = prefix + name + ".npz"
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b]},
@@ -281,7 +281,9 @@ class Q (Agent):
 
     def load(self, name, prefix = "agents/params/"):
         """Loads a model from a given file"""
-        name = prefix + name
+        self.name = name.split("/")[-1]
+        if not "/" in name:
+            name = prefix + name
         with open(name, "rb") as inFile:
             loaded = pickle.load(inFile)
             self.init_model(w = loaded["weights"], b = loaded["biases"])
@@ -310,20 +312,14 @@ class Q (Agent):
         return remaining
 
     def variable_summaries(self, var, name):
-      """Attach mean/max/min/sd & histogram for TensorBoard visualization."""
-      with tf.name_scope('summaries'):
-        with tf.name_scope(name):
-            # Find the mean of the variable
-            mean = tf.reduce_mean(var)
-            # Log the mean as scalar
-            tf.summary.scalar('mean', mean)
-            with tf.name_scope('stddev'):
-                stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-            tf.summary.scalar('stddev', stddev)
-            tf.summary.scalar('max', tf.reduce_max(var))
-            tf.summary.scalar('min', tf.reduce_min(var))
-            # Log var as a histogram
-            tf.summary.histogram('histogram', var)
+        """Attach mean/max/min/sd & histogram for TensorBoard visualization."""
+        with tf.name_scope("summary"):
+            with tf.name_scope(name):
+                tf.summary.scalar('norm', tf.norm(var))
+                tf.summary.scalar('max', tf.reduce_max(var))
+                tf.summary.scalar('min', tf.reduce_min(var))
+                # Log var as a histogram
+                tf.summary.histogram('histogram', var)
 
     def get_weight(self, index):
         """Gets an evaluated weight matrix from layer 'index'"""
@@ -360,3 +356,7 @@ class Q (Agent):
         """Replace all biases with new_b"""
         for i in range(len(self.b)):
             self.set_bias(i, new_b[i])
+
+    def get_l2(self):
+        """Gets the L2 norm of the weights"""
+        return self.l2.eval(session = self.session)

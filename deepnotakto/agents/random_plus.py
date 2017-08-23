@@ -45,5 +45,5 @@ class RandomAgentPlus (Agent):
             move = choice(possible)
         # Make move
         _, reward = env.act(move)
-        self.record(state, move, reward)
+        self.add_buffer(state, move, reward)
         return [state, move, reward]

@@ -37,11 +37,16 @@ class Env (object):
         Returns:
             Int - Reward for given action
         """
-        new_board = np.add(self.board, np.reshape(action, self.shape))
+        rewards = {
+            "illegal": -100,
+            "forced": 8,
+            "loss": -5
+        }
+        new_board = np.add(self.board, action)
         # If illegal move, highly negative reward
         if np.max(new_board) > 1:
             self._illegal = True
-            return -10
+            return rewards["illegal"]
         # Rewards based on winner
         winner = self.is_over(new_board)
         if winner == 0:
@@ -50,15 +55,12 @@ class Env (object):
             if self.turn >= 2:
                 if self.forced(new_board):
                     # High reward for a forced win
-                    return 8
-                else:
-                    # Small reward for lasting long
-                    return 1
+                    return rewards["forced"]
             # No reward
             return 0
         else:
             # Negative reward for a loss
-            return -5
+            return rewards["loss"]
         
     def act(self, action):
         """
@@ -73,7 +75,7 @@ class Env (object):
         # Calculate move reward
         reward = self.reward(action)
         # Calculate move effect
-        move = np.add(self.board, np.reshape(action, self.shape))
+        move = np.add(self.board, action)
         # Play the move if the move isn't legal
         if not np.max(move) > 1:
             self.board = move
@@ -162,7 +164,7 @@ class Env (object):
         print()
         
     def play(self, a1, a2, games = 1, trainer_a1 = None, trainer_a2 = None,
-             display = False, server_display = False):
+             display = False, server_display = False, final_reward = False):
         """
         Plays two agents against eachother
         Parameters:
@@ -174,9 +176,17 @@ class Env (object):
                 Agent #1 online training func
             trainer_a2 ((N, N) array, (N, N) array, float -> None) -
                 Agent #2 online training func
+            final_reward (bool) - Fill in rewards on buffer with final reward?
         """
-        # Loop for multiple games
+        # Initialize
+        episode_train_a1, episode_train_a2 = False, False
+        if trainer_a1 != None:
+            episode_train_a1 = trainer_a1._type == "episode"
+        if trainer_a2 != None:
+            episode_train_a2 = trainer_a2._type == "episode"
         played_games = 0
+        a1.reset_buffer()
+        a2.reset_buffer()
         self._end = False
         if not display:
             if server_display:
@@ -184,18 +194,20 @@ class Env (object):
             else:
                 print("Playing ", end = "")
             display_interval = games // 10 if games > 10 else 1
+        # ---------- GAME SET LOOP ----------
         while played_games < games and not self._end:
             self.reset()
             played_games += 1
             # Is the game loop finished
             done = False
             illegal = False
-            # Main game loop
+            # ---------- Main game loop ----------
             if not display and not server_display:
                 if played_games % display_interval == 0:
                     print("*", end = "")
             if display:
                     self.display()
+            # Play while user has not quit and players play legally
             while not done and not self._end and not self._illegal:
                 # Copy the board for later comparison pre and post move
                 b_copy = copy(self.board)
@@ -203,21 +215,27 @@ class Env (object):
                     print("Turn #{}".format(self.turn))
                 # Play the agent corresponding to the current turn
                 if self.turn % 2 == 0:
+                    # Run the turn
                     state, action, reward = a1.act(self)
-                    if trainer_a1 != None:
-                        if self._end: return None
+                    # End if user ends
+                    if self._end: return None
+                    # Train if training is enabled
+                    if trainer_a1 != None and not episode_train_a1:
                         trainer_a1(state, action, reward)
                 else:
+                    # Run the turn
                     state, action, reward = a2.act(self)
+                    # End if user ends
                     if self._end: return None
-                    if trainer_a2 != None:
+                    # Train if training is enabled
+                    if trainer_a2 != None and not episode_train_a2:
                         trainer_a2(state, action, reward)
                 # Change turn
                 self.turn += 1
                 if display:
                     self.display()
 
-                # Catch double illegal moves
+                # Catch double illegal moves and end the game if they exist
                 if np.equal(b_copy, self.board).all() and self.turn != 0:
                     if display:
                         print("Agent attempted an illegal move")
@@ -226,9 +244,23 @@ class Env (object):
                 else:
                     # End the loop if game is over
                     done = False if self.is_over() == 0 else True
+            # ---------- End Main game loop ----------
+            # Save game buffers
+            a1.save_buffer(final_reward)
+            a2.save_buffer(final_reward)
+            # Train by episode
+            if trainer_a1 != None and episode_train_a1:
+                ep_s, ep_a, ep_r, = a1.get_last_buffer()
+                trainer_a1(ep_s, ep_a, ep_r)
+            if trainer_a2 != None and episode_train_a2:
+                ep_s, ep_a, ep_r, = a2.get_last_buffer()
+                trainer_a2(ep_s, ep_a, ep_r)
+
+            # Show the final board if desired
             if display and not self._illegal:
                 self.display()
                 print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
+        # Server display
         if not display and not server_display:
             print(" Done")
-            pass
+        # ---------- END GAME SET LOOP ----------

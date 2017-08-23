@@ -1,8 +1,6 @@
 # agent.py
 # Abraham Oliver, 2017
 # Deep-Notakto Project
-
-from numpy import reshape
 from numpy.random import normal
 
 class Agent (object):
@@ -10,12 +8,11 @@ class Agent (object):
         self.states = []
         self.actions = []
         self.rewards = []
+        self.buffer = []
+        self.buffer_lengths = []
     
     def act(self, env, **kwargs):
         pass
-    
-    def flatten(self, state):
-        return reshape(state, -1)
     
     def train(self, states, targets):
         pass
@@ -31,6 +28,32 @@ class Agent (object):
         self.states = []
         self.actions = []
         self.rewards = []
+
+    def add_buffer(self, state, action, reward):
+        """Adds a move of a game to a game buffer"""
+        self.buffer.append((state, action, reward))
+
+    def save_buffer(self, use_final = False, reward = None):
+        """Saves a buffer to the game records"""
+        final_reward = self.buffer[-1][2]
+        for s, a, r in self.buffer:
+            self.states.append(s)
+            self.actions.append(a)
+            if use_final:
+                self.rewards.append(final_reward)
+            elif reward != None:
+                self.rewards.append(reward)
+            else:
+                self.rewards.append(r)
+        self.buffer_lengths.append(len(self.buffer))
+        self.buffer = []
+
+    def reset_buffer(self):
+        self.buffer = []
+
+    def get_last_buffer(self):
+        i = self.buffer_lengths[-1]
+        return (self.states[-i:], self.actions[-i:], self.rewards[-i:])
     
     def save(self, name = "agent"):
         pass
