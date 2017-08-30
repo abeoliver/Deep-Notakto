@@ -3,7 +3,6 @@
 # Deep-Notakto Project
 
 import numpy as np
-import tensorflow as tf
 from agent import Agent
 
 class Human (Agent):
@@ -20,7 +19,7 @@ class Human (Agent):
         if move == False:
             env._end = True
             return [0, 0, 0]
-        action = np.zeros(env.shape)
+        action = np.zeros(env.shape, dtype = np.int32)
         action[move[0], move[1]] = 1
         _, reward = env.act(action)
         self.add_buffer(state, action, reward)

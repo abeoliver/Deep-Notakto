@@ -42,3 +42,19 @@ def rotate_batch(states, actions, rewards):
             s = ns
             a = na
     return [new_states, new_actions, new_rewards]
+
+def bin_to_array(b):
+    a = np.array([int(i) for i in str(b)])
+    size = int(np.sqrt(a.size))
+    return np.reshape(a, [size, size])
+
+def array_to_bin(a):
+    return ''.join([str(int(i)) for i in np.reshape(a, -1).tolist()])
+
+def get_move_dict(name, size):
+    with open(name, "r") as f:
+        d = {}
+        for line in f:
+            parts = [str(bin(int(i)))[2:].zfill(size * size) for i in line.rstrip().split()]
+            d[parts[0]] = bin_to_array(parts[1])
+    return d

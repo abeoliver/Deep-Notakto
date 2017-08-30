@@ -35,6 +35,9 @@ class Agent (object):
 
     def save_buffer(self, use_final = False, reward = None):
         """Saves a buffer to the game records"""
+        if len(self.buffer) == 0:
+            self.buffer_lengths.append(0)
+            return None
         final_reward = self.buffer[-1][2]
         for s, a, r in self.buffer:
             self.states.append(s)

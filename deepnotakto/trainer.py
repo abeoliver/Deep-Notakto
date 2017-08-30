@@ -9,7 +9,8 @@ from util import rotate as rotate_func
 
 class Trainer (object):
     def __init__(self, agent, learn_rate = 1e-4, record = True,
-                 change_agent_epsilon = False, epsilon_func = None):
+                 change_agent_epsilon = False, epsilon_func = None,
+                 path = None, tensorboard_interval = 100):
         """
         Initializes a Trainer object
         Parameter:
@@ -19,7 +20,10 @@ class Trainer (object):
         """
         self.agent = agent
         self.iteration = 0
-        self.writer = tf.summary.FileWriter("tensorboard/" + agent.name)
+        if path == None:
+            path = "tensorboard/"
+        self.writer = tf.summary.FileWriter(path + agent.name + "/")
+        self.tensorboard_interval = tensorboard_interval
         self.learn_rate = learn_rate
         self.record = record
         self.change_agent_epsilon = change_agent_epsilon
@@ -37,7 +41,7 @@ class Trainer (object):
         return f
 
     def online(self, state, action, reward, learn_rate = None,
-               record = None, **kwargs):
+               record = None, rotate = False, **kwargs):
         """
         Train the on a single state and reward (usually in an environment)
         Parameters:
@@ -53,8 +57,12 @@ class Trainer (object):
             record = self.record
         target = self.agent.target(state, action,
                                    self.agent.get_Q(state), reward, **kwargs)
-        summary = self.agent.update([state], [target], learn_rate)
-        if record:
+        if rotate:
+            states, targets = self.get_rotations([state], [target])
+        else:
+            states, targets = [state], [target]
+        summary = self.agent.update(states, targets, learn_rate)
+        if record and (self.iteration % self.tensorboard_interval == 0):
             self.writer.add_summary(summary, self.iteration)
         self.iteration += 1
         if self.change_agent_epsilon:
@@ -81,14 +89,14 @@ class Trainer (object):
         if rotate:
             states, targets = self.get_rotations(states, targets)
         summary = self.agent.update(states, targets, learn_rate)
-        if record:
+        if record and (self.iteration % self.tensorboard_interval == 0):
             self.writer.add_summary(summary, self.iteration)
         self.iteration += 1
         if self.change_agent_epsilon:
             self.change_epsilon()
 
     def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
-                learn_rate = None, silence = False, record = None):
+                learn_rate = None, silence = False, record = None, rotate = False):
         """
         Trains the agent with a Markov Decision Model
         Parameters:
@@ -118,6 +126,8 @@ class Trainer (object):
                                           self.agent.get_Q(state), reward)
                        for (state, action, reward) in \
                        zip(states, actions, rewards)]
+            if rotate:
+                states, targets = self.get_rotations(states, targets)
             # Batch train once
             self.batch(states, targets, batch_size, 1, learn_rate, True, record)
             # Output
@@ -128,7 +138,7 @@ class Trainer (object):
             print(" Done")
 
     def batch(self, states, targets, batch_size, epochs = 1,
-              learn_rate = .0001, silence = False, record = None):
+              learn_rate = None, silence = False, record = None):
         """
         Trains the agent over a batch of states and targets
         Parameters:
@@ -140,13 +150,15 @@ class Trainer (object):
             silence (bool) - Print to stdout?
             record (bool) - Record tensorboard info? (instance default if none)
         """
+        if learn_rate == None:
+            learn_rate = self.learn_rate
         if record == None:
             record = self.record
         # Output
         if not silence:
             print("Training ", end="")
             eb = (epochs * batch_size)
-            display_interval = eb// 10 if eb >= 10 else 1
+            display_interval = eb // 10 if eb >= 10 else 1
             display_iterations = 0
         # Train
         for epoch in range(epochs):
@@ -160,20 +172,19 @@ class Trainer (object):
             for batch in batches:
                 # Get the states and targets from the indidicies of the
                 # batch and pass into update
-                if record:
-                    summary = self.agent.update([states[b] for b in batch],
-                                                 [targets[b] for b in batch],
-                                                 learn_rate)
+                summary = self.agent.update([states[b] for b in batch],
+                                             [targets[b] for b in batch],
+                                             learn_rate)
+                if record and (self.iteration % self.tensorboard_interval == 0):
                     # Write summary to file
                     self.writer.add_summary(summary, self.iteration)
-
-                # Display
-                if not silence:
-                    display_iterations += 1
-                    if display_iterations % display_interval == 0:
-                        print("*", end = "")
-            # Increase iteration counter
-            self.iteration += 1
+                # Increase iteration counter
+                self.iteration += 1
+            # Display
+            if not silence:
+                display_iterations += 1
+                if display_iterations % display_interval == 0:
+                    print("*", end = "")
         if not silence:
             print(" Done")
 

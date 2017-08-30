@@ -7,7 +7,7 @@ from copy import copy
 import matplotlib.pyplot as plt
 
 class Env (object):
-    def __init__(self, size):
+    def __init__(self, size, rewards = None):
         """
         Initializes the environment
         Parameters:
@@ -17,6 +17,14 @@ class Env (object):
         self.size = size
         self.shape = (size, size)
         self.reset()
+        if rewards == None:
+            self.rewards = {
+                "illegal": -100,
+                "forced": 10,
+                "loss": -5
+            }
+        else:
+            self.rewards = rewards
     
     def reset(self):
         """Reset board"""
@@ -37,16 +45,11 @@ class Env (object):
         Returns:
             Int - Reward for given action
         """
-        rewards = {
-            "illegal": -100,
-            "forced": 8,
-            "loss": -5
-        }
         new_board = np.add(self.board, action)
         # If illegal move, highly negative reward
         if np.max(new_board) > 1:
             self._illegal = True
-            return rewards["illegal"]
+            return self.rewards["illegal"]
         # Rewards based on winner
         winner = self.is_over(new_board)
         if winner == 0:
@@ -55,12 +58,12 @@ class Env (object):
             if self.turn >= 2:
                 if self.forced(new_board):
                     # High reward for a forced win
-                    return rewards["forced"]
+                    return self.rewards["forced"]
             # No reward
             return 0
         else:
             # Negative reward for a loss
-            return rewards["loss"]
+            return self.rewards["loss"]
         
     def act(self, action):
         """
@@ -83,26 +86,24 @@ class Env (object):
     
     def is_over(self, board = None):
         """Checks if game is over"""
-        if type(board) != np.ndarray:
-            b = copy(self.board)
-        else:
-            b = copy(board)
+        if type(board) == type(None):
+            board = self.board
         # Rows
-        for row in b:
-            if np.sum(row) == b.shape[0]:
+        for row in board:
+            if np.sum(row) == board.shape[0]:
                 return 1 if self.turn % 2 == 0 else 2
         # Columns (row in transpose of b)
-        for col in b.T:
-            if np.sum(col) == b.shape[0]:
+        for col in board.T:
+            if np.sum(col) == board.shape[0]:
                 return 1 if self.turn % 2 == 0 else 2
         # Diagonals
         # Top left to bottom right
-        tlbr = copy(b) * np.identity(self.size) * 1000
-        if np.sum(tlbr) >= 1000 * self.size:
+        tlbr = np.sum(board * np.identity(self.size))
+        if tlbr >= self.size:
             return 1 if self.turn % 2 == 0 else 2
         # Bottom left to top right
-        bltr = copy(b) * np.flip(np.identity(self.size), 1) * 1000
-        if np.sum(bltr) >= 1000 * self.size:
+        bltr = np.sum(board * np.flip(np.identity(self.size), 1))
+        if bltr >= self.size:
             return 1 if self.turn % 2 == 0 else 2
         # Otherwise game is not over
         return 0
@@ -243,9 +244,15 @@ class Env (object):
                     # End the loop if game is over
                     done = False if self.is_over() == 0 else True
             # ---------- End Main game loop ----------
-            # Save game buffers
-            a1.save_buffer(final_reward)
-            a2.save_buffer(final_reward)
+            # Save game buffers (do not use final reward if on illgal move)
+            if a1.buffer[-1][2] == self.rewards["illegal"]:
+                a1.save_buffer(False)
+            else:
+                a1.save_buffer(final_reward)
+            if a2.buffer[-1][2] == self.rewards["illegal"]:
+                a2.save_buffer(False)
+            else:
+                a2.save_buffer(final_reward)
             # Train by episode
             if trainer_a1 != None and episode_train_a1:
                 ep_s, ep_a, ep_r, = a1.get_last_buffer()

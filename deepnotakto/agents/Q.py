@@ -21,7 +21,7 @@ class Q (Agent):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and its model
+            name (string) - Name of the agent and ITERATIONS model
         Note:
             Initializes randomly if no model is given
         """
@@ -200,14 +200,6 @@ class Q (Agent):
                     if b != None:
                         self.set_biases(b)
 
-    def _l2_recurse(self, x, n = 0):
-        """Recursively adds all weight norms"""
-        if len(x) <= 1:
-            return tf.nn.l2_loss(x[0], name="L2_{}".format(n))
-        else:
-            return tf.add(tf.nn.l2_loss(x[0], name="L2_{}".format(n)),
-                          self._l2_recurse(x[1:], n + 1))
-
     def init_training_vars(self):
         """Initialize training procedure"""
         with self._graph.as_default():
@@ -216,9 +208,11 @@ class Q (Agent):
                 self.q_targets = tf.placeholder(shape = [None, self.layers[0]],
                                                  dtype = tf.float64, name = "targets")
                 # L2 Regularization
+                """
                 with tf.name_scope("regularization"):
                     self.l2 = self._l2_recurse(self.w)
                     tf.summary.scalar("L2", self.l2)
+                """
                 # Learning rate
                 self.learn_rate = tf.placeholder(tf.float32)
                 # Regular loss
@@ -226,8 +220,9 @@ class Q (Agent):
                 tf.summary.scalar("Data_loss", data_loss)
                 # Loss and Regularization
                 self.beta_ph = tf.placeholder(tf.float64, name = "beta")
+                # tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2), name="loss")
                 loss = tf.verify_tensor_all_finite(
-                    tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2), name = "loss"),
+                    tf.reduce_mean(data_loss, name = "loss"),
                     msg = "Inf or NaN values",
                     name = "FiniteVerify"
                 )
@@ -270,10 +265,10 @@ class Q (Agent):
         """
         if name == None:
             name = self.name
-        if "/" in name:
+        if not ("/" in name):
+            name = prefix + name
+        if not ("." in name):
             name += ".npz"
-        else:
-            name = prefix + name + ".npz"
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b]},
@@ -282,6 +277,7 @@ class Q (Agent):
     def load(self, name, prefix = "agents/params/"):
         """Loads a model from a given file"""
         self.name = name.split("/")[-1]
+        self.name = self.name.split(".")[0]
         if not "/" in name:
             name = prefix + name
         with open(name, "rb") as inFile:
@@ -357,6 +353,15 @@ class Q (Agent):
         for i in range(len(self.b)):
             self.set_bias(i, new_b[i])
 
+    """
+    def _l2_recurse(self, x, n = 0):
+    ""Recursively adds all weight norms""
+    if len(x) <= 1:
+        return tf.nn.l2_loss(x[0], name="L2_{}".format(n))
+    else:
+        return tf.add(tf.nn.l2_loss(x[0], name="L2_{}".format(n)),
+                      self._l2_recurse(x[1:], n + 1))
     def get_l2(self):
-        """Gets the L2 norm of the weights"""
+        ""Gets the L2 norm of the weights""
         return self.l2.eval(session = self.session)
+    """
