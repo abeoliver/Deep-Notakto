@@ -7,14 +7,12 @@ import tensorflow as tf
 from agents.Q import Q as BaseQ
 
 class All (BaseQ):
-    def __init__(self, layers, func, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, func, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
             func (Tensor -> Tensor) - Activation function to apply
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -23,8 +21,7 @@ class All (BaseQ):
             Initializes randomly if no model is given
         """
         self.func = func
-        super(All, self).__init__(layers, load_file_name, gamma,
-                                         epsilon, beta, name)
+        super(All, self).__init__(layers, gamma, epsilon, beta, name)
         if name == None:
             self.name = "Q{}_all_activated".format(self.layers)
 
@@ -41,14 +38,12 @@ class All (BaseQ):
         return self._feed(self.func(out), n + 1)
 
 class Hidden (BaseQ):
-    def __init__(self, layers, func, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, func, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
             func (Tensor -> Tensor) - Activation function to apply
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -57,8 +52,7 @@ class Hidden (BaseQ):
             Initializes randomly if no model is given
         """
         self.func = func
-        super(Hidden, self).__init__(layers, load_file_name, gamma,
-                                         epsilon, beta, name)
+        super(Hidden, self).__init__(layers, gamma, epsilon, beta, name)
         if name == None:
             self.name = "Q{}_hidden_activated".format(self.layers)
 
@@ -75,13 +69,11 @@ class Hidden (BaseQ):
         return self._feed(self.func(out), n + 1)
 
 class SigmoidAll (All):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -89,21 +81,17 @@ class SigmoidAll (All):
         Note:
             Initializes randomly if no model is given
         """
-        super(SigmoidAll, self).__init__(layers,
-                                         tf.nn.sigmoid,
-                                         load_file_name, gamma,
+        super(SigmoidAll, self).__init__(layers, tf.nn.sigmoid, gamma,
                                          epsilon, beta, name)
         if name == None:
             self.name = "Q{}_sigmoid_all".format(self.layers)
 
 class SigmoidHidden (Hidden):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -111,21 +99,17 @@ class SigmoidHidden (Hidden):
         Note:
             Initializes randomly if no model is given
         """
-        super(SigmoidHidden, self).__init__(layers,
-                                         tf.nn.sigmoid,
-                                         load_file_name, gamma,
+        super(SigmoidHidden, self).__init__(layers, tf.nn.sigmoid, gamma,
                                          epsilon, beta, name)
         if name == None:
             self.name = "Q{}_sigmoid_hidden".format(self.layers)
 
 class TanhAll (All):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -133,21 +117,17 @@ class TanhAll (All):
         Note:
             Initializes randomly if no model is given
         """
-        super(TanhAll, self).__init__(layers,
-                                         tf.nn.tanh,
-                                         load_file_name, gamma,
-                                         epsilon, beta, name)
+        super(TanhAll, self).__init__(layers, tf.nn.tanh, gamma,
+                                      epsilon, beta, name)
         if name == None:
             self.name = "Q{}_tanh_all".format(self.layers)
 
 class TanhHidden (Hidden):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -155,21 +135,18 @@ class TanhHidden (Hidden):
         Note:
             Initializes randomly if no model is given
         """
-        super(TanhHidden, self).__init__(layers,
-                                         tf.nn.tanh,
-                                         load_file_name, gamma,
+        super(TanhHidden, self).__init__(layers, tf.nn.tanh, gamma,
                                          epsilon, beta, name)
         if name == None:
             self.name = "Q{}_tanh_hidden".format(self.layers)
 
 class Softmax (Hidden):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None, func = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1,
+                 name = None, func = None):
         """
         Initializes an Q learning agent with tanh on all layers
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -179,7 +156,7 @@ class Softmax (Hidden):
         """
         if func == None:
             func = tf.identity
-        super(Softmax, self).__init__(layers, func, load_file_name, gamma,
+        super(Softmax, self).__init__(layers, func, gamma,
                                       epsilon, beta, name)
         if name == None:
             self.name = "Q{}_softmax".format(self.layers)
@@ -243,13 +220,11 @@ class Softmax (Hidden):
             return t
 
 class ReluHidden (Hidden):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -257,21 +232,17 @@ class ReluHidden (Hidden):
         Note:
             Initializes randomly if no model is given
         """
-        super(ReluHidden, self).__init__(layers,
-                                         tf.nn.relu,
-                                         load_file_name, gamma,
-                                         epsilon, beta, name)
+        super(ReluHidden, self).__init__(layers, tf.nn.relu,
+                                         gamma, epsilon, beta, name)
         if name == None:
             self.name = "Q{}_relu_hidden".format(self.layers)
 
 class ReluAll (All):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                 epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int []) - Number of nodes in each layer
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
@@ -279,9 +250,7 @@ class ReluAll (All):
         Note:
             Initializes randomly if no model is given
         """
-        super(ReluAll, self).__init__(layers,
-                                         tf.nn.relu,
-                                         load_file_name, gamma,
-                                         epsilon, beta, name)
+        super(ReluAll, self).__init__(layers, tf.nn.relu, gamma,
+                                      epsilon, beta, name)
         if name == None:
             self.name = "Q{}_relu_all".format(self.layers)

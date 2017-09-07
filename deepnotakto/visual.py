@@ -343,17 +343,3 @@ class GameWithConfidences (Visualization):
                     break
             # ---------- END FINAL SCREEN ----------
         # ---------- END GAME SET LOOP ----------
-
-if __name__ == "__main__":
-    from environment import Env
-    from agents.Q import Q
-    import agents.activated as activated
-    from agents.human import Human
-    # from agents.random_agent import RandomAgent
-    # from agents.random_plus import RandomAgentPlus
-    size = 5
-    e = Env(size)
-    np = activated.QSigmoidHidden([9, 100, 200, 100, 9], gamma=.6, epsilon=.1, beta=5.0,
-                                 load_file_name="agents/params/Q[9, 100, 200, 100, 9]_sigmoid_hidden.pz")
-    h = Human()
-    GameWithConfidences(e, p, h, piece_size = 100)

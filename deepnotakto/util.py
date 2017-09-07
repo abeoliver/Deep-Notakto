@@ -3,6 +3,8 @@
 # Deep Notakto Project
 
 import numpy as np
+from agents.Q import Q
+import pickle
 
 def save_set(name, states, actions, rewards):
     """Save a set of states, actions, and rewards"""
@@ -58,3 +60,12 @@ def get_move_dict(name, size):
             parts = [str(bin(int(i)))[2:].zfill(size * size) for i in line.rstrip().split()]
             d[parts[0]] = bin_to_array(parts[1])
     return d
+
+def load_q_agent(filename):
+    with open(filename, "rb") as f:
+        loaded = pickle.load(f)
+        q = Q(loaded["params"]["layers"], gamma = loaded["params"]["gamma"],
+              name = loaded["params"]["name"], initialize = False)
+        q.init_model(w = loaded["weights"], b=loaded["biases"])
+        q.init_training_vars()
+        return q

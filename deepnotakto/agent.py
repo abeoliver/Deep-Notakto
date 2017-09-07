@@ -68,8 +68,3 @@ class Agent (object):
     def get_Q(self, board):
         """Gets the Q-values (all random)"""
         return normal(size = board.shape)
-    
-    @staticmethod
-    def load(name):
-        """Loads a model from a given file name"""
-        pass

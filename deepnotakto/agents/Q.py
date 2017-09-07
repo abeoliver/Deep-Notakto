@@ -11,19 +11,17 @@ import pickle
 import matplotlib.pyplot as plt
 
 class Q (Agent):
-    def __init__(self, layers, load_file_name = None, gamma = .8,
-                epsilon = 0.0, beta = 0.1, name = None):
+    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = 0.1, name = None,
+                 initialize = True):
         """
         Initializes an Q learning agent
         Parameters:
             size (int) - Board side length
-            load_file_name (string) - Path to load saved model from
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
             name (string) - Name of the agent and episodes model
-        Note:
-            Initializes randomly if no model is given
+            initialize (bool) - Initialize the model randomly or not
         """
         # Call parent initializer
         super(Q, self).__init__()
@@ -34,7 +32,7 @@ class Q (Agent):
         self.beta = beta
         self.epsilon = epsilon
         if name == None:
-            self.name = "Q{}_regular".format(self.layers)
+            self.name = "Q{}".format(self.layers)
         else:
             self.name = name
         self.initialized = False
@@ -42,14 +40,11 @@ class Q (Agent):
         tf.reset_default_graph()
         self._graph = tf.Graph()
         self.session = tf.Session(graph = self._graph)
-        # Load model if a file name is given
-        if load_file_name != None:
-            self.load(load_file_name, "")
-        # Otherwise randomly initialize
-        else:
+        if initialize:
+            # Initialize model
             self.init_model()
-        # Initialize training variables like the loss and the optimizer
-        self.init_training_vars()
+            # Initialize training variables like the loss and the optimizer
+            self.init_training_vars()
 
     def act(self, env):
         """
@@ -275,16 +270,6 @@ class Q (Agent):
                          "params": {"layers": self.layers, "gamma": self.gamma,
                                     "name": self.name}},
                         outFile)
-
-    def load(self, name, prefix = "agents/params/"):
-        """Loads a model from a given file"""
-        self.name = name.split("/")[-1]
-        self.name = self.name.split(".")[0]
-        if not "/" in name:
-            name = prefix + name
-        with open(name, "rb") as inFile:
-            loaded = pickle.load(inFile)
-            self.init_model(w = loaded["weights"], b = loaded["biases"])
 
     def possible_moves(self, board):
         """Returns a list of all possible moves (reguardless of win / loss)"""
