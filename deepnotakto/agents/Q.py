@@ -21,7 +21,7 @@ class Q (Agent):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -271,7 +271,9 @@ class Q (Agent):
             name += ".npz"
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
-                         "biases": [b.eval(session = self.session) for b in self.b]},
+                         "biases": [b.eval(session = self.session) for b in self.b],
+                         "params": {"layers": self.layers, "gamma": self.gamma,
+                                    "name": self.name}},
                         outFile)
 
     def load(self, name, prefix = "agents/params/"):

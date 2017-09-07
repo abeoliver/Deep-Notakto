@@ -18,7 +18,7 @@ class All (BaseQ):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -52,7 +52,7 @@ class Hidden (BaseQ):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -85,7 +85,7 @@ class SigmoidAll (All):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -107,7 +107,7 @@ class SigmoidHidden (Hidden):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -129,7 +129,7 @@ class TanhAll (All):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -151,7 +151,7 @@ class TanhHidden (Hidden):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -173,7 +173,7 @@ class Softmax (Hidden):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -253,7 +253,7 @@ class ReluHidden (Hidden):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
@@ -275,7 +275,7 @@ class ReluAll (All):
             gamma (float [0, 1]) - Q-Learning hyperparameter
             epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter
-            name (string) - Name of the agent and ITERATIONS model
+            name (string) - Name of the agent and episodes model
         Note:
             Initializes randomly if no model is given
         """
