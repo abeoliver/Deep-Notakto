@@ -68,26 +68,33 @@ EVAL_FREQ = 10000
 VERSION = 17
 print("Version {}".format(VERSION))
 rewards = {
-	"illegal": -100,
+	"ilegal": -100,
     "forced": 10,
     "loss": -5
 }
-e = Env(4, rewards = rewards)
-a1 = Q([16, 100, 200, 16], gamma = .6, beta = 0.0,
-		 name = "4x4_server_p1_{}".format(VERSION))
-a2 = Q([16, 100, 200, 16], gamma = .6, beta = 0.0,
-		 name = "4x4_server_p2_{}".format(VERSION))
-t1 = Trainer(a1, learn_rate = 1e-7, record = False, change_agent_epsilon = True,
-			 epsilon_func = lambda x: min(1.0, 1000.0 / x))
-t2 = Trainer(a2, learn_rate = 1e-7, record = False, change_agent_epsilon = True,
-			 epsilon_func = lambda x: min(1.0, 1000.0 / x))
-rand = RandomAgentPlus()
 
-for i in range(TRAIN_REVS):
-	print("--------- Random vs Player 1 ({}) ---------".format(i + 1))
-	train_agent(e, 10000, a1, rand, t1.get_episode(rotate = True))
-	print("--------- Random vs Player 2 ({}) ---------".format(i + 1))
-	train_agent(e, 10000, rand, a2, t2.get_episode(rotate = True))
-	print("--------- Player 1 vs Player 2 ({}) ---------".format(i + 1))
-	train_agent(e, 100, a1, a2, t1.get_episode(rotate = True),
-				t2.get_episode(rotate = True))
+for i in range(3, 6):
+	if i == 3 or i == 5:
+		player = 1
+	elif i == 4:
+		player = 2
+	e = Env(i, rewards = rewards)
+	a = Q([i ** 2, 100, 200, i ** 2], gamma = .6, beta = 0.0,
+			 name = "{}x{}_server_p{}_{}".format(i, i, player, VERSION))
+	t = Trainer(a, learn_rate = 1e-8, record = False, change_agent_epsilon = True,
+				 epsilon_func = lambda x: min(1.0, 1000.0 / x))
+	rand = RandomAgentPlus()
+	if player == 1:
+		train_agent(e, 100000, a, rand, t1 = t)
+	else:
+		train_agent(e, 100000, rand, a, t2 = t)
+	wins = 0
+	for i in range(100):
+		if player == 1:
+			e.play(a, rand)
+		else:
+			e.play(rand, a)
+		over = e.is_over()
+		if over == player:
+			wins += 1
+	util.record("all_trials.txt", a, t, wins)

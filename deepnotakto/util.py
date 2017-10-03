@@ -69,3 +69,23 @@ def load_q_agent(filename):
         q.init_model(w = loaded["weights"], b=loaded["biases"])
         q.init_training_vars()
         return q
+
+def record(file, agent, trainer, quality = None):
+    a = str(agent.layers)
+    g = str(agent.gamma)
+    b = str(agent.beta)
+    lr = str(trainer.learn_rate)
+    i = str(trainer.iteration)
+    q = str(quality)
+    s = "\n{arch}{asp}{gamma}{gsp}{beta}{bsp}{learn}{lrsp}{iteration}{isp}{quality}".format(
+        arch = a, gamma = g, beta = b, learn = lr, iteration = i, quality = q, asp = " " * (33 - len(a)),
+        gsp = " " * (10 - len(g)), bsp = " " * (9 - len(b)), lrsp = " " * (17 - len(lr)), isp = " " * (14 - len(i)))
+    with open(file, 'a') as f:
+        f.write(s)
+
+def new_record_file(name):
+    with open(name, 'w') as f:
+        f.writelines(["Experimental Trials : {name}\n".format(name = name),
+                      "The Deep Notakto Poject\n",
+                      "ARCHITECTURE                     GAMMA     BETA     LEARNING RATE    ITERATIONS    QUALITY\n",
+                      ("=" * 118) + "\n"])
