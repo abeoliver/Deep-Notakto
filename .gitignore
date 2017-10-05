@@ -10,3 +10,7 @@ deepnotakto/__pycache__/
 *.ABEOLIVER
 
 *.npz
+
+deepnotakto/agents/perfect/3\.txt
+
+deepnotakto/agents/perfect/5\.txt

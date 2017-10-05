@@ -6,6 +6,15 @@ import numpy as np
 from copy import copy
 import matplotlib.pyplot as plt
 
+"""
+Define "Observation" (dict)
+Keys:
+    "observation" - Board state
+    "reward" (float) - Reward for a given action
+    "done" (bool) - Is at terminal state?
+    "info" (dict) - Other environment information
+"""
+
 class Env (object):
     def __init__(self, size, rewards = None):
         """
@@ -30,7 +39,6 @@ class Env (object):
         """Reset board"""
         self.board = np.zeros(self.shape, dtype = np.int32)
         self.turn = 0
-        self._end = False
         self._illegal = False
     
     def observe(self):
@@ -54,11 +62,9 @@ class Env (object):
         winner = self.is_over(new_board)
         if winner == 0:
             # Positive reward for forcing a loss
-            # Not possible with three or fewer moves so don't check
-            if self.turn >= 2:
-                if self.forced(new_board):
-                    # High reward for a forced win
-                    return self.rewards["forced"]
+            if self.forced(new_board):
+                # High reward for a forced win
+                return self.rewards["forced"]
             # No reward
             return 0
         else:
@@ -71,7 +77,7 @@ class Env (object):
         Parameters:
             action ((N, M) array) - One hot of the desired move
         Returns:
-            [array, float] - Board state, reward
+            Observation Object
         Note:
             When an illegal move is attempted no move is executed
         """
@@ -82,7 +88,12 @@ class Env (object):
         # Play the move if the move isn't legal
         if not np.max(move) > 1:
             self.board = move
-        return (self.board, reward)
+        return {
+            "observation": self.board,
+            "reward": reward,
+            "done": self.is_over(),
+            "info": {}
+        }
     
     def is_over(self, board = None):
         """Checks if game is over"""
@@ -126,27 +137,26 @@ class Env (object):
         return True
     
     def possible_moves(self, board = None):
-        """Returns a list of all possible moves (reguardless of win / loss)"""
+        """
+        Returns a list of all possible moves (reguardless of win / loss)
+        Parameters:
+            board ((N, N) array) - Current board state (default self.board)
+        Returns:
+            List of (N, N) arrays - All legal moves for the given board
+        """
         # Get board
         if type(board) != np.ndarray:
             b = copy(self.board)
         else:
             b = copy(board)
         remaining = []
-        # If in a 2D shape
-        if len(b.shape) == 2:
-            for i in range(b.shape[0]):
-                for j in range(b.shape[1]):
-                    if b[i, j] == 0:
-                        z = np.zeros(b.shape, dtype = np.int32)
-                        z[i, j] = 1
-                        remaining.append(z)
-        # If in a 1D shape
-        else:
-            for i in range(b.shape[0]):
-                if b[i] == 0:
-                    z = np.zeros(b.shape)
-                    z[i] = 1
+        # Loop over both axes
+        for i in range(b.shape[0]):
+            for j in range(b.shape[1]):
+                # If there is an empty space, add the move to remaining moves
+                if b[i, j] == 0:
+                    z = np.zeros(b.shape, dtype = np.int32)
+                    z[i, j] = 1
                     remaining.append(z)
         return remaining
     
@@ -163,109 +173,3 @@ class Env (object):
         """Prints board or shows it as an image"""
         self.__str__()
         print()
-        
-    def play(self, a1, a2, games = 1, trainer_a1 = None, trainer_a2 = None,
-             display = False, final_reward = False,
-             silence = False):
-        """
-        Plays two agents against eachother
-        Parameters:
-            a1 (agent.Agent) - Agent for player 1
-            a2 (agent.Agent) - Agent for player 2
-            games (int) - Number of games to play
-            display (bool) - Should debug print board and winner
-            trainer_a1 ((N, N) array, (N, N) array, float -> None) -
-                Agent #1 online training func
-            trainer_a2 ((N, N) array, (N, N) array, float -> None) -
-                Agent #2 online training func
-            final_reward (bool) - Fill in rewards on buffer with final reward?
-        """
-        # Initialize
-        episode_train_a1, episode_train_a2 = False, False
-        if trainer_a1 != None:
-            episode_train_a1 = trainer_a1._type == "episode"
-        if trainer_a2 != None:
-            episode_train_a2 = trainer_a2._type == "episode"
-        played_games = 0
-        a1.reset_buffer()
-        a2.reset_buffer()
-        self._end = False
-        if not display and not silence:
-            print("Playing ", end = "")
-        display_interval = games // 10 if games > 10 else 1
-        # ---------- GAME SET LOOP ----------
-        while played_games < games and not self._end:
-            self.reset()
-            played_games += 1
-            # Is the game loop finished
-            done = False
-            illegal = False
-            # ---------- Main game loop ----------
-            if not display and not silence:
-                if played_games % display_interval == 0:
-                    print("*", end = "")
-            if display and not silence:
-                    self.display()
-            # Play while user has not quit and players play legally
-            while not done and not self._end and not self._illegal:
-                # Copy the board for later comparison pre and post move
-                b_copy = copy(self.board)
-                if display and not silence:
-                    print("Turn #{}".format(self.turn))
-                # Play the agent corresponding to the current turn
-                if self.turn % 2 == 0:
-                    # Run the turn
-                    state, action, reward = a1.act(self)
-                    # End if user ends
-                    if self._end: return None
-                    # Train if training is enabled
-                    if trainer_a1 != None and not episode_train_a1:
-                        trainer_a1(state, action, reward)
-                else:
-                    # Run the turn
-                    state, action, reward = a2.act(self)
-                    # End if user ends
-                    if self._end: return None
-                    # Train if training is enabled
-                    if trainer_a2 != None and not episode_train_a2:
-                        trainer_a2(state, action, reward)
-                # Change turn
-                self.turn += 1
-                if display:
-                    self.display()
-
-                # Catch double illegal moves and end the game if they exist
-                if np.equal(b_copy, self.board).all() and self.turn != 0:
-                    if display and not silence:
-                        print("Agent attempted an illegal move")
-                    done = True
-                    self._illegal = True
-                else:
-                    # End the loop if game is over
-                    done = False if self.is_over() == 0 else True
-            # ---------- End Main game loop ----------
-            # Save game buffers (do not use final reward if on illgal move)
-            if a1.buffer[-1][2] == self.rewards["illegal"]:
-                a1.save_buffer(False)
-            else:
-                a1.save_buffer(final_reward)
-            if a2.buffer[-1][2] == self.rewards["illegal"]:
-                a2.save_buffer(False)
-            else:
-                a2.save_buffer(final_reward)
-            # Train by episode
-            if trainer_a1 != None and episode_train_a1:
-                ep_s, ep_a, ep_r, = a1.get_last_buffer()
-                trainer_a1(ep_s, ep_a, ep_r)
-            if trainer_a2 != None and episode_train_a2:
-                ep_s, ep_a, ep_r, = a2.get_last_buffer()
-                trainer_a2(ep_s, ep_a, ep_r)
-
-            # Show the final board if desired
-            if display and not self._illegal and not silence:
-                self.display()
-                print("Player {} Wins!".format(1 if self.turn % 2 == 0 else 2))
-        # Server display
-        if not display and not silence:
-            print(" Done")
-        # ---------- END GAME SET LOOP ----------
