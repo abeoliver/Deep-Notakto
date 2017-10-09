@@ -12,7 +12,19 @@ class Agent (object):
         self.episode_lengths = []
     
     def act(self, env):
-        pass
+        """
+        Choose action, apply action to environment, and recieve reward
+        Parameters:
+            env (environment.Env) - Environment of the agent
+        """
+        # Current environment state
+        state = env.observe()
+        # Get the action
+        action = self.get_action(state)
+        # Apply action
+        observation = env.act(action)
+        # Record state, action, reward
+        self.add_episode(state, action, observation["reward"])
 
     def train(self, **kwargs):
         pass
@@ -23,8 +35,8 @@ class Agent (object):
         self.actions.append(action)
         self.rewards.append(reward)
 
-    def reset_memory(self):
-        """Reset the memory of an agent"""
+    def new_episode(self):
+        """Reset the memory of an agent for a new episode"""
         self.states = []
         self.actions = []
         self.rewards = []
@@ -33,7 +45,7 @@ class Agent (object):
         """Adds a move of a game to a game episode"""
         self.episode.append((state, action, reward))
 
-    def save_episode(self, use_final = False, reward = None):
+    def save_episode(self, use_final = True, reward = None):
         """
         Saves an episode to the game records
         Parameters:
@@ -91,10 +103,21 @@ class Agent (object):
         b = sum(self.episode_lengths[:i + 1])
         return zip(self.states[a:b], self.actions[a:b], self.rewards[a:b])
 
+    def use_final_reward(self, epsiode_index = -1):
+        """
+        Use the final reward of an episode for the episode of the entire episode
+        Parameters:
+            epsiode_index (int) - Epsiode to change (default most recent)
+        """
+        # Get indexes of desired episode
+        length = self.episode_lengths[epsiode_index]
+        # Get starting index
+        start = sum(self.episode_lengths[:i])
+        # Get final reward
+        reward = self.rewards[start + length - 1]
+        # Apply to all in episode
+        self.rewards[start : start + le - 1] = [reward] * (start + le - 1)
+
     def save(self, **kwargs):
         """Saves an agent to a file"""
         pass
-
-    def load(self, **kwargs):
-        """Loads an agent from a file"""
-        return None

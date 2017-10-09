@@ -4,6 +4,7 @@
 
 import numpy as np
 from agent import Agent
+import sys
 
 class Human (Agent):
     def __init__(self):
@@ -12,32 +13,25 @@ class Human (Agent):
         super(Human, self).__init__()
         self.name = "Human"
     
-    def act(self, env, **kwargs):
-        """Choose and action and apply to environment"""
-        state = env.observe()
-        move = self.get_turn(env)
-        if move == False:
-            env._end = True
-            return [0, 0, 0]
-        action = np.zeros(env.shape, dtype = np.int32)
-        action[move[0], move[1]] = 1
-        _, reward = env.act(action)
-        self.add_buffer(state, action, reward)
-        return [state, action, reward]
-    
-    def get_turn(self, env):
-        """Get turn input"""
+    def get_action(self, state):
+        """Get the action from the user"""
+        # Continue prompting until a valid move is made
         while True:
+            # Prompt for user choice
             inp = input("Next Piece: ")
+            # Exit program if human desires
             if inp == "exit":
-                return False
-            if len(inp) != 3:
+                sys.exit()
+            # Split move into [row, column]
+            row, col = inp.split()
+            if type(row) != int or row > state.shape[0] or row < 1:
                 print("Please enter valid position")
                 continue
-            row, col = [int(i) for i in inp.split()]
+            elif type(col) != int or col > state.shape[0] or col < 1:
+                print("Please enter valid position")
+                continue
             row = int(row) - 1
             col = int(col) - 1
-            if row < 0 or col < 0 or row >= env.size or col >= env.size:
-                print("Please enter valid position")
-                continue
-            return [row, col]
+            action = np.zeros(state.shape, dtype = np.int32)
+            action[row, column] = 1
+            return action

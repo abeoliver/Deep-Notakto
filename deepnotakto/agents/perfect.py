@@ -15,19 +15,7 @@ class Perfect (Agent):
         self.name = "Perfect"
         self.moves = util.get_move_dict(move_file, size)
 
-    def act(self, env, **kwargs):
-        """Choose and action and apply it to the environment"""
-        # Observe the state
-        state = env.observe()
-        move = self.get_move(state)
-        # Apply move
-        _, reward = env.act(move)
-        # Add the move to the buffer
-        self.add_buffer(state, move, reward)
-        return [state, move, reward]
-
-
-    def get_move(self, state):
+    def get_action(self, state):
         # Convert the board into a move-dict key
         b = util.array_to_bin(state)
         # Get the perfect moves

@@ -67,7 +67,7 @@ def load_q_agent(filename):
         q = Q(loaded["params"]["layers"], gamma = loaded["params"]["gamma"],
               name = loaded["params"]["name"], initialize = False)
         q.init_model(w = loaded["weights"], b=loaded["biases"])
-        q.init_training_vars()
+        q._init_training_vars()
         return q
 
 def record(file, agent, trainer, quality = None):
@@ -89,3 +89,11 @@ def new_record_file(name):
                       "The Deep Notakto Poject\n",
                       "ARCHITECTURE                     GAMMA     BETA     LEARNING RATE    ITERATIONS    QUALITY\n",
                       ("=" * 118) + "\n"])
+
+def norm(x):
+    """Normalize an array"""
+    xmax, xmin = x.max(), x.min()
+    # Catch divide by zero
+    if xmax == xmin:
+        return x
+    return (x - xmin) / (xmax - xmin)

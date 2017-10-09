@@ -86,13 +86,16 @@ class Env (object):
         # Calculate move effect
         move = np.add(self.board, action)
         # Play the move if the move isn't legal
-        if not np.max(move) > 1:
+        if np.max(move) > 1:
+            illegal = True
+        else:
             self.board = move
+            illegal = False
         return {
             "observation": self.board,
             "reward": reward,
             "done": self.is_over(),
-            "info": {}
+            "info": {"illegal": illegal}
         }
     
     def is_over(self, board = None):
@@ -129,20 +132,20 @@ class Env (object):
         if np.sum(b) > (b.shape[0] - 1) ** 2:
             return True
         # Calculate possible moves for opponent
-        remaining = self.possible_moves(b)
+        remaining = self.action_space(b)
         # If all are losses, a loss is forced
         for r in remaining:
             if self.is_over(np.add(b, r)) == 0:
                 return False
         return True
     
-    def possible_moves(self, board = None):
+    def action_space(self, board = None):
         """
         Returns a list of all possible moves (reguardless of win / loss)
         Parameters:
             board ((N, N) array) - Current board state (default self.board)
         Returns:
-            List of (N, N) arrays - All legal moves for the given board
+            List of (N, N) arrays - AllActivated legal moves for the given board
         """
         # Get board
         if type(board) != np.ndarray:

@@ -9,6 +9,7 @@ from agent import Agent
 from copy import copy, deepcopy
 import pickle
 import matplotlib.pyplot as plt
+import trainer as BaseTrainer
 
 class Q (Agent):
     def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = None, name = None,
@@ -62,7 +63,7 @@ class Q (Agent):
             # Initialize training variables like the loss and the optimizer
             self._init_training_vars()
             # Initialize trainer
-            self.trainer = Trainer.Trainer(self, **kwargs)
+            self.trainer = QTrainer(self, **kwargs)
             self.initialized = True
 
     def init_model(self, w = None, b = None):
@@ -180,29 +181,6 @@ class Q (Agent):
             self._bias_assign = [self.b[n].assign(self._bias_assign_ph[n])
                                    for n in range(len(self.layers) - 1)]
 
-    def act(self, env):
-        """
-        Choose action, apply action to environment, and recieve reward
-        Parameters:
-            env (environment.Env) - Environment of the agent
-        """
-        # Current environment state
-        current_state = env.observe()
-        # Get action Q-vector
-        Q = self.get_Q(current_state)
-        # Get the action
-        # Use e-greedy exploration
-        if np.random.rand(1) < self.epsilon:
-            action = choice(self.possible_moves(current_state))
-        else:
-            action = self.get_action(Q)
-        # Apply action
-        observation = env.act(action)
-        # Extract from observation
-        reward = observation["reward"]
-        # Record state, action, reward
-        self.add_buffer(current_state, action, reward)
-
     def target(self, state, action, q, reward):
         """
         Calculate the target values for the network in a given situation
@@ -218,7 +196,7 @@ class Q (Agent):
         new_state = np.add(state, action)
         # Get max Q values after any move opponent could make
         new_Q_max = []
-        for move in self.possible_moves(new_state):
+        for move in self.action_space(new_state):
             # Make the move
             temp_state = np.add(move, new_state)
             # Find the max Q value
@@ -230,20 +208,24 @@ class Q (Agent):
         Q[np.argmax(action)] = reward + self.gamma * maxQ
         return np.reshape(Q, new_state.shape)
 
-    def get_action(self, Q):
+    def get_action(self, state):
         """
-        Creates an action vector for a given Q-vector
-        Parameters:
-            Q (N array) - Q-values for a state
+        Creates an action vector for a given state
         Returns:
             (N, M) array - An action vector
         """
-        # Find the best aciton (largest Q)
-        max_index = np.argmax(Q)
-        # Make an action vector
-        action = np.zeros(Q.size, dtype = np.int32)
-        action[max_index] = 1
-        action = np.reshape(action, Q.shape)
+        # Use e-greedy exploration
+        if np.random.rand(1) < self.epsilon:
+            action = choice(self.possible_moves(state))
+        else:
+            # Get action Q-vector
+            Q = self.get_Q(state)
+            # Find the best aciton (largest Q)
+            max_index = np.argmax(Q)
+            # Make an action vector
+            action = np.zeros(Q.size, dtype = np.int32)
+            action[max_index] = 1
+            action = np.reshape(action, Q.shape)
         # Return the action
         return action
 
@@ -314,32 +296,6 @@ class Q (Agent):
                                     "name": self.name}},
                         outFile)
 
-    def possible_moves(self, board):
-        """
-        Returns a list of all possible moves (reguardless of win / loss)
-        Parameters:
-            board ((N, N) array) - Current board state
-        Returns:
-            List of (N, N) arrays - All legal moves for the given board
-        Note:
-            An almost identical function exists in the game environment but the
-            agent must have an independent mehtod to generate possible moves in
-            order to calculate target Q values
-        """
-        # Get board
-        b = copy(board)
-        # All remaining moves
-        remaining = []
-        # Loop over both axes
-        for i in range(b.shape[0]):
-            for j in range(b.shape[1]):
-                # If there is an empty space, add the move to remaining moves
-                if b[i, j] == 0:
-                    z = np.zeros(b.shape, dtype = np.int32)
-                    z[i, j] = 1
-                    remaining.append(z)
-        return remaining
-
     def variable_summaries(self, var, name):
         """
         Summarize mean/max/min/sd & histogram for TensorBoard visualization
@@ -407,3 +363,129 @@ class Q (Agent):
     def get_l2(self):
         """Gets the L2 norm of the weights"""
         return self.l2.eval(session = self.session)
+
+    def action_space(self, board):
+        """
+        Returns a list of all possible moves (reguardless of win / loss)
+        Parameters:
+            board ((N, N) array) - Current board state
+        Returns:
+            List of (N, N) arrays - AllActivated legal moves for the given board
+        Note:
+            An almost identical function exists in the game environment but the
+            agent must have an independent mehtod to generate possible moves in
+            order to calculate target Q values
+        """
+        # Get board
+        b = copy(board)
+        # AllActivated remaining moves
+        remaining = []
+        # Loop over both axes
+        for i in range(b.shape[0]):
+            for j in range(b.shape[1]):
+                # If there is an empty space, add the move to remaining moves
+                if b[i, j] == 0:
+                    z = np.zeros(b.shape, dtype = np.int32)
+                    z[i, j] = 1
+                    remaining.append(z)
+        return remaining
+
+
+class QTrainer (BaseTrainer):
+    def __init__(self, agent, learn_rate = 1e-4, path = None, tensorboard_interval = 100,
+                 epsilon_func = None):
+        """
+        Initializes a QTrainer object
+        Parameter:
+            agent (Agent) - Agent to train
+            learn_rate (float) - Learning rate for gradient descent
+
+            record (bool) - Record tensorboard data or not
+            path (string) - File path to save Tensorboard info
+                                (default "/tensorboard")
+            tensorboard_interval (int) - Number of iterations between
+                                            tensorboard saves
+            epsilon_func (int -> float) - Function to choose new epsilon depending upon
+                                            the current iteration
+        Note:
+            If tensorboard_interval is less than 1 then recording not implemented
+        """
+        # Call parent initializer
+        super(QTrainer, self).__init__(agent, record, path, tensorboard_interval)
+        self.learn_rate = learn_rate
+        self.epsilon_func = epsilon_func
+
+    def online(self, learn_rate = None, **kwargs):
+        """Gets a callable function for online training"""
+        return lambda s, a, r: self.online([s], [a], [r], 1, 1, learn_rate, **kwargs)
+
+    def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
+                learn_rate = None, rotate = False):
+        """
+        Trains the agent over a set of state, action, reward triples
+        Parameters:
+            states (List of (N, N) arrays) - List of states
+            actions (List of (N, N) arrays) - Actions taken on states
+            rewards (List of floats) - Rewards for each action
+            batch_size (int) - Number of samples in each minibatch
+            epochs (int) - Number of iterations over the entire dataset
+            learn_rate (float) - Learning rate
+            rotate (bool) - Rotate matricies for transformation invariant learning
+        Note:
+            Targets are caculated at the beginning of each epoch.
+            Therefore, all targets in a given epochs use the same
+            Q-function and are not effected by the others in the
+            batch
+        """
+        # Default to default learning rate
+        if learn_rate == None:
+            learn_rate = self.learn_rate
+
+        # Train for each epoch
+        for epoch in range(epochs):
+            # Calculate targets from states, actions, and rewards
+            targets = [self.agent.target(state, action, self.agent.get_Q(state), reward)
+                       for (state, action, reward) in zip(states, actions, rewards)]
+            # Rotate if requested
+            if rotate:
+                states, targets = self.get_rotations(states, targets)
+            # Separate into batches and train
+            self.batch(states, targets, batch_size, learn_rate)
+        # Change epsilon for e-greedy
+        self.change_epsilon()
+
+    def batch(self, states, targets, batch_size, learn_rate = None):
+        """
+        Trains the agent over a batch of states and targets
+        Parameters:
+            states (List of (N, N) arrays) - List of states
+            targets (List of (N, N) arrays) - List of targets for each state
+            batch_size (int) - Number of samples in each minibatch
+            learn_rate (float) - Learning rate
+        """
+        # Default learning rate if none provided
+        if learn_rate == None:
+            learn_rate = self.learn_rate
+        # Batching
+        # Shuffle all indicies
+        order = list(range(len(states)))
+        shuffle(order)
+        # Chunk index list into batches of desired size
+        batches = list(self.chunk(order, batch_size))
+        # Train over each minibatch
+        for batch in batches:
+            # Get the states and targets for the indicies in the batch and update
+            summary = self.agent.update([states[b] for b in batch],
+                                         [targets[b] for b in batch],
+                                         learn_rate)
+            # Record if Tensorboard recording enabled
+            if self.record and (self.iteration % self.tensorboard_interval == 0):
+                # Write summary to file
+                self.writer.add_summary(summary, self.iteration)
+            # Increase iteration counter
+            self.iteration += 1
+
+    def change_epsilon(self):
+        """Changes the epsilon for e-greedy exploration as a function of iteration"""
+        if self.epsilon_func != None:
+            self.agent.epsilon = self.epsilon_func(self.iteration)
