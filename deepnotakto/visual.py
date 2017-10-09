@@ -42,7 +42,7 @@ class Visualization (object):
             # Loop over the columns
             for m in range(a.shape[1]):
                 # Get current entry
-                x = a[n, m]
+                x = a[m, n]
                 # Get color for item
                 color = colorfunc(x)
                 # Get located coordinates
@@ -130,26 +130,27 @@ class GameWithConfidences (Visualization):
         self.define_buttons()
         self.colors["piece_closed"] = [29, 135, 229]
         self.colors["piece_open"] = [144, 164, 174]
-        self.font = pygame.font.SysFont('Calibri Bold', self.width // 30)
+        if (self.width // 30) < 25:
+            self.font = pygame.font.SysFont('Calibri Bold', 25)
+        else:
+            self.font = pygame.font.SysFont('Calibri Bold', self.width // 30)
         # Run game (and end if invalid values inhibit agents)
+        self.run()
+        """
         try:
             self.run()
         except InvalidArgumentError as error:
             print("Tensor has NaN or Inf values")
             pygame.quit()
         except:
-            pygame.quit()
+            pygame.quit()"""
 
     def define_buttons(self):
         """Define the buttons coordinates for the given board size"""
         buttons = {
             "next": (self.width - self.piece_size, 0, self.piece_size, self.piece_size)
         }
-        if self.show_confidences:
-            # Confidences are not buttons thus start shifted on to the game board
-            start = [(2 + self.side) * self.piece_size, self.piece_size]
-        else:
-            start = [self.piece_size, self.piece_size]
+        start = [self.piece_size, self.piece_size]
         for n in range(self.side):
             for m in range(self.side):
                 buttons["{0} {1}".format(m, n)] = (
@@ -194,18 +195,16 @@ class GameWithConfidences (Visualization):
             # Normalize the confidences
             normed = util.norm(confidences)
             # Get the colored rectangles representing the confidences
-            conf_rects = self.array_to_rect(normed,
-                                            [self.piece_size, self.piece_size],
+            start_conf_point = [self.piece_size * (self.side + 2),
+                                self.piece_size]
+            conf_rects = self.array_to_rect(normed, start_conf_point,
                                             self.piece_size, self.q_colorfunc)
             # Draw the rectangles
             self.draw_rects(conf_rects, self.piece_size // 10, self.colors["white"])
         # DISPLAY BOARD
-        # Find starting position (shifted if confidences are shown)
-        if self.show_confidences: start_x = self.piece_size
-        else: start_x = (self.side + 2) * self.piece_size
         # Get the colored rectangles representing the game board
         board_rects = self.array_to_rect(board,
-                                         [start_x, self.piece_size],
+                                         [self.piece_size, self.piece_size],
                                          self.piece_size,
                                          self.board_colorfunc)
         # Draw the rectangles
@@ -238,6 +237,7 @@ class GameWithConfidences (Visualization):
             # If exit button clicked, exit game
             if event.type == pygame.QUIT:
                 pygame.quit()
+                sys.exit()
             # If a click, see if it is over a virtual button
             elif event.type == pygame.MOUSEBUTTONUP:
                 button = self.get_button(event.pos)
@@ -248,6 +248,7 @@ class GameWithConfidences (Visualization):
         """Runs the game"""
         # ---------- GAME SET LOOP ----------
         games = 0
+        confidences = None
         self.a1.new_episode()
         self.a2.new_episode()
         while True:
@@ -265,7 +266,6 @@ class GameWithConfidences (Visualization):
             # Otherwise setup for a human player's first turn
             elif self.show_confidences:
                 confidences = np.zeros(self.shape)
-            board = self.env.observe()
             button = ""
             # ---------- MAIN GAME ----------
             while not done:
@@ -274,6 +274,7 @@ class GameWithConfidences (Visualization):
                 # Set the banner for the current player
                 banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                 # Display the game screen
+                board = self.env.observe()
                 self.display(board, confidences, banner, next = True)
                 # ---------- HUMAN MOVE GUI LOOP (if needed) ----------
                 if (self.env.turn % 2 == 0 and self.a1_human) or \
@@ -289,14 +290,14 @@ class GameWithConfidences (Visualization):
                             # Get indicies
                             n, m = [int(i) for i in button.split()]
                             # If the move is invalid, do nothing
-                            if board[m, n] != 0:
+                            if board[n, m] != 0:
                                 button = ""
                                 continue
                             # Make a move vector
-                            move = np.zeros(self.env.shape, dtype = np.int32)
-                            move[m, n] = 1
+                            action = np.zeros(self.env.shape, dtype = np.int32)
+                            action[n, m] = 1
                             # Play the move
-                            self.env.act(move)
+                            self.env.act(action)
                             # Increase turn counter
                             self.env.turn += 1
                             # Exit human loop
@@ -322,8 +323,8 @@ class GameWithConfidences (Visualization):
                     # Play the agent corresponding to the current turn
                     player = [self.a1, self.a2][self.env.turn % 2]
                     if self.show_confidences:
-                        confidences = self.player.get_Q(self.env.observe())
-                    observation = self.player.act(self.env)
+                        confidences = player.get_Q(self.env.observe())
+                    observation = player.act(self.env)
                     # Update turn counter
                     self.env.turn += 1
                     # Catch illegal move
@@ -344,6 +345,7 @@ class GameWithConfidences (Visualization):
             self.a1.save_episode()
             self.a2.save_episode()
             # ---------- FINAL SCREEN ----------
+            board = self.env.observe()
             while True:
                 # Check if next button is permitted
                 allow_next = (games < self.max_games) or (self.max_games < 0)
@@ -356,3 +358,14 @@ class GameWithConfidences (Visualization):
                     break
             # ---------- END FINAL SCREEN ----------
         # ---------- END GAME SET LOOP ----------
+
+if __name__ == "__main__":
+    from agents.random_agent import RandomAgent
+    from environment import Env
+    from agents.human import Human
+    from agents.Q import Q
+    e = Env(3)
+    p1 = Human()
+    # p2 = RandomAgent(e)
+    p2 = Q([9, 9])
+    vis = GameWithConfidences(e, p1, p2, show_confidences = True)

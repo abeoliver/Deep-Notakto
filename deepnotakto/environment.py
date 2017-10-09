@@ -49,7 +49,7 @@ class Env (object):
         """
         Returns the immediate reward for a given action
         Parameters:
-            action ((N, M) array) - One hot of the given move
+            action ((N, N) array) - One hot of the given move
         Returns:
             Int - Reward for given action
         """

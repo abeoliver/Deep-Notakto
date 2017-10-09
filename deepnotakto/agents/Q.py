@@ -5,7 +5,7 @@
 import numpy as np
 import tensorflow as tf
 from random import choice, sample, shuffle
-from agent import Agent
+from agents.agent import Agent
 from copy import copy, deepcopy
 import pickle
 import matplotlib.pyplot as plt
@@ -45,7 +45,7 @@ class Q (Agent):
         if initialize:
             self.initialize(**kwargs)
 
-    def initialize(self, w = None, b = None, **kwargs):
+    def initialize(self, w = None, b = None, force = False, **kwargs):
         """
         Initialize the model
         Parameters:
@@ -53,7 +53,7 @@ class Q (Agent):
             b (List of (1, N) arrays with variable size) - Initial biases
             KWARGS passed to trainer initializer
         """
-        if not self.initialized:
+        if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
             tf.reset_default_graph()
             self._graph = tf.Graph()
@@ -116,8 +116,12 @@ class Q (Agent):
                 tf.summary.scalar("Data_loss", data_loss)
                 # Loss and Regularization
                 self.beta_ph = tf.placeholder(tf.float64, name = "beta")
-                loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
-                                      name = "regularized_loss")
+                # L2 Regularization
+                if self.beta != None:
+                    loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
+                                          name = "regularized_loss")
+                else:
+                    loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
                 loss = tf.verify_tensor_all_finite(
                     tf.reduce_mean(loss, name = "loss"),
                     msg = "Inf or NaN values",
@@ -225,7 +229,7 @@ class Q (Agent):
             # Make an action vector
             action = np.zeros(Q.size, dtype = np.int32)
             action[max_index] = 1
-            action = np.reshape(action, Q.shape)
+            action = np.reshape(action, state.shape)
         # Return the action
         return action
 
@@ -238,8 +242,9 @@ class Q (Agent):
             (N, N) array - Q matrix for the given state
         """
         # Pass the state to the model and get array of Q-values
-        return self.y.eval(session = self.session,
-                           feed_dict = {self.x: [np.reshape(state, -1)]})[0]
+        return np.reshape(self.y.eval(session = self.session,
+                                      feed_dict = {self.x: [np.reshape(state, -1)]})[0],
+                          state.shape)
 
     def _feed(self, inp, n = 0):
         """
@@ -390,8 +395,7 @@ class Q (Agent):
                     remaining.append(z)
         return remaining
 
-
-class QTrainer (BaseTrainer):
+class QTrainer (BaseTrainer.Trainer):
     def __init__(self, agent, learn_rate = 1e-4, path = None, tensorboard_interval = 100,
                  epsilon_func = None):
         """
@@ -411,7 +415,7 @@ class QTrainer (BaseTrainer):
             If tensorboard_interval is less than 1 then recording not implemented
         """
         # Call parent initializer
-        super(QTrainer, self).__init__(agent, record, path, tensorboard_interval)
+        super(QTrainer, self).__init__(agent, path, tensorboard_interval)
         self.learn_rate = learn_rate
         self.epsilon_func = epsilon_func
 
@@ -489,3 +493,11 @@ class QTrainer (BaseTrainer):
         """Changes the epsilon for e-greedy exploration as a function of iteration"""
         if self.epsilon_func != None:
             self.agent.epsilon = self.epsilon_func(self.iteration)
+
+def load_agent(filename):
+    with open(filename, "rb") as f:
+        loaded = pickle.load(f)
+        q = Q(loaded["params"]["layers"], gamma = loaded["params"]["gamma"],
+              name = loaded["params"]["name"], initialize = False)
+        q.initialized(w = loaded["weights"], b = loaded["biases"], force = True)
+        return q

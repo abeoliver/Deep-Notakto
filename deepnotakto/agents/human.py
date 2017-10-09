@@ -3,7 +3,7 @@
 # Deep-Notakto Project
 
 import numpy as np
-from agent import Agent
+from agents.agent import Agent
 import sys
 
 class Human (Agent):

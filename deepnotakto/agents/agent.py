@@ -25,6 +25,7 @@ class Agent (object):
         observation = env.act(action)
         # Record state, action, reward
         self.add_episode(state, action, observation["reward"])
+        return observation
 
     def train(self, **kwargs):
         pass

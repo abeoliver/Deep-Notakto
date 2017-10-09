@@ -4,7 +4,7 @@
 
 from numpy import zeros, int32, add, equal, int32
 from random import randint, choice
-from agent import Agent
+from agents.agent import Agent
 
 class RandomAgent (Agent):
     def __init__(self, env):
@@ -14,7 +14,7 @@ class RandomAgent (Agent):
 
     def get_action(self, state):
         possible = self.env.action_space(state)
-        player = 2 if env.turn % 2 == 0 else 1
+        player = 2 if self.env.turn % 2 == 0 else 1
         not_loser = []
         move = zeros(state.shape, int32)
         winning_move = False
