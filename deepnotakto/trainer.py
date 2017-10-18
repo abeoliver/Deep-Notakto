@@ -8,7 +8,8 @@ from random import shuffle
 from util import rotate as rotate_func
 
 class Trainer (object):
-    def __init__(self, agent, path = None, tensorboard_interval = 100):
+    def __init__(self, agent, training = None, path = None, tensorboard_interval = 100,
+                 iterations = 0):
         """
         Initializes a Trainer object
         Parameter:
@@ -21,7 +22,8 @@ class Trainer (object):
             If tensorboard_interval is less than 1 then recording not implemented
         """
         self.agent = agent
-        self.iteration = 0
+        self.iteration = iterations
+        self.training_params(training)
         # If recording, setup tensorboard functions
         if tensorboard_interval >= 1:
             if path == None:
@@ -31,6 +33,9 @@ class Trainer (object):
             self.record = True
         else:
             self.record = False
+
+    def default_training_dict(self):
+        self.training = {}
 
     def online(self, **kwargs):
         """Gets a callable function for online training"""
@@ -75,5 +80,7 @@ class Trainer (object):
         Yield successive n-sized chunks from l
         Taken from https://stackoverflow.com/questions/312443/how-do-you-split-a-list-into-evenly-sized-chunks
         """
+        if n < 0:
+            yield l
         for i in range(0, len(l), n):
             yield l[i:i + n]

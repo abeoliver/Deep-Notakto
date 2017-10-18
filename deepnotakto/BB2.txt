@@ -1,0 +1,5 @@
+Experimental Trials : BB2.txt
+The Deep Notakto Poject
+NAME                      ARCHITECTURE                            GAMMA     BETA     L-RATE    ITERS        QUALITY
+========================================================================================================================
+Q(a1a1a)                  [16, 100, 400, 16]                      0.7       N\A      1e-08     42800        74 / 100

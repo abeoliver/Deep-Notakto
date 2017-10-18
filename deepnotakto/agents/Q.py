@@ -7,13 +7,14 @@ import tensorflow as tf
 from random import choice, sample, shuffle
 from agents.agent import Agent
 from copy import copy, deepcopy
-import pickle
+import pickle, util
 import matplotlib.pyplot as plt
 import trainer as BaseTrainer
 
 class Q (Agent):
     def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = None, name = None,
-                 initialize = True, **kwargs):
+                 initialize = True, deterministic = True, classifier = None,
+                 training = None, iterations = 0, **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -24,33 +25,43 @@ class Q (Agent):
                             is not implemented)
             name (string) - Name of the agent and episodes model
             initialize (bool) - Initialize the model randomly or not
+            deterministic (bool) - Make decisions deterministically or stochastically
+            training (dict) - Parameters for training
             KWARGS are passed to the model initializer
         """
         # INITIALIZE
         # Parent initializer
-        super(Q, self).__init__()
+        super(Q, self).__init__(training)
         self.layers = layers
+        self.architecture = layers
         self.size = np.int32(np.sqrt(layers[0]))
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
         self.epsilon = epsilon
+        self.deterministic = deterministic
+        # If classifier is not set, get a new classifier
+        if classifier == None:
+            self.classifier = util.unique_classifier()
+        else:
+            self.classifier = classifier
         # If a name is not set, set a default name
         if name == None:
-            self.name = "Q{}".format(self.layers)
+            self.name = "Q({})".format(self.classifier)
         else:
             self.name = name
         # Initialize if desired
         self.initialized = False
         if initialize:
-            self.initialize(**kwargs)
+            self.initialize(training = training, iterations = iterations, **kwargs)
 
-    def initialize(self, w = None, b = None, force = False, **kwargs):
+    def initialize(self, weights = None, biases = None, force = False,
+                   training = None, **kwargs):
         """
         Initialize the model
         Parameters:
-            w (List of (N, M) arrays with variable size) - Initial weights
-            b (List of (1, N) arrays with variable size) - Initial biases
+            weights (List of (N, M) arrays with variable size) - Initial weights
+            biases (List of (1, N) arrays with variable size) - Initial biases
             KWARGS passed to trainer initializer
         """
         if not self.initialized or force:
@@ -59,30 +70,30 @@ class Q (Agent):
             self._graph = tf.Graph()
             self.session = tf.Session(graph = self._graph)
             # Initialize model
-            self.init_model(w = w, b = b)
+            self.init_model(weights = weights, biases = biases)
             # Initialize training variables like the loss and the optimizer
             self._init_training_vars()
-            # Initialize trainer
-            self.trainer = QTrainer(self, **kwargs)
+            # Initialize trainer (passing the agent as a parameter)
+            self.trainer = QTrainer(self, training = training, **kwargs)
             self.initialized = True
 
-    def init_model(self, w = None, b = None):
+    def init_model(self, weights = None, biases = None):
         """
         Randomly intitialize model, if given weights and biases, treat as a re-initialization
         Parameters:
-            w (List of (N, M) arrays) - Initial weight matricies
-            b (List of (1, N) arrays) - Initial bias matricies
+            weights (List of (N, M) arrays) - Initial weight matricies
+            biases (List of (1, N) arrays) - Initial bias matricies
         """
         with self._graph.as_default():
             with tf.name_scope("model"):
                 if not self.initialized:
                     s = self.layers[0]
                     self.x = tf.placeholder(tf.float64, shape = [None, s], name = "input")
-                    self._init_weights(w)
+                    self._init_weights(weights)
                     # Tensorboard visualizations
                     for i, weight in enumerate(self.w):
                         self.variable_summaries(weight, "weight_" + str(i))
-                    self._init_biases(b)
+                    self._init_biases(biases)
                     # Tensorboard visualizations
                     for i, bias in enumerate(self.b):
                         self.variable_summaries(bias, "bias_" + str(i))
@@ -92,9 +103,9 @@ class Q (Agent):
                     self.session.run(tf.global_variables_initializer())
                 else:
                     if w != None:
-                        self.set_weights(w)
+                        self.set_weights(weights)
                     if b != None:
-                        self.set_biases(b)
+                        self.set_biases(biases)
 
     def _init_training_vars(self):
         """Initialize training procedure"""
@@ -220,8 +231,8 @@ class Q (Agent):
         """
         # Use e-greedy exploration
         if np.random.rand(1) < self.epsilon:
-            action = choice(self.possible_moves(state))
-        else:
+            action = choice(self.action_space(state))
+        elif self.deterministic:
             # Get action Q-vector
             Q = self.get_Q(state)
             # Find the best aciton (largest Q)
@@ -230,6 +241,8 @@ class Q (Agent):
             action = np.zeros(Q.size, dtype = np.int32)
             action[max_index] = 1
             action = np.reshape(action, state.shape)
+        else:
+            pass
         # Return the action
         return action
 
@@ -294,11 +307,16 @@ class Q (Agent):
         Parameters:
             name (string) - File name for save file
         """
+        # Remove epsilon function from the parameters
+        params = copy(self.trainer.params)
+        params["epsilon_func"] = None
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b],
-                         "params": {"layers": self.layers, "gamma": self.gamma,
-                                    "name": self.name}},
+                         "layers": self.layers, "gamma": self.gamma, "name": self.name,
+                         "beta": self.beta, "deterministic": self.deterministic,
+                         "classifier": self.classifier, "training": params,
+                         "iterations": self.trainer.iteration},
                         outFile)
 
     def variable_summaries(self, var, name):
@@ -362,7 +380,7 @@ class Q (Agent):
         if len(ws) <= 1:
             return tf.nn.l2_loss(ws[0], name="L2_{}".format(n))
         else:
-            return tf.add(tf.nn.l2_loss(x[0], name="L2_{}".format(n)),
+            return tf.add(tf.nn.l2_loss(ws[0], name="L2_{}".format(n)),
                           self._l2_recurse(ws[1:], n + 1))
 
     def get_l2(self):
@@ -395,36 +413,62 @@ class Q (Agent):
                     remaining.append(z)
         return remaining
 
+    def train(self, mode = ""):
+        self.trainer.train(mode)
+
+    def training_params(self, training = None):
+        self.trainer.training_params(training)
+
 class QTrainer (BaseTrainer.Trainer):
-    def __init__(self, agent, learn_rate = 1e-4, path = None, tensorboard_interval = 100,
-                 epsilon_func = None):
-        """
-        Initializes a QTrainer object
-        Parameter:
-            agent (Agent) - Agent to train
-            learn_rate (float) - Learning rate for gradient descent
+    def training_params(self, training = None):
+        defaults = {
+            "type": "episodic",
+            "learn_rate": 1e-4,
+            "rotate": False,
+            "epsilon_func": None,
+            "epochs": 1,
+            "batch_size": 1
+        }
+        if training == None:
+            self.params = defaults
+        else:
+            self.params = training
+            for key in defaults:
+                if not key in self.params:
+                    self.params[key] = defaults[key]
 
-            record (bool) - Record tensorboard data or not
-            path (string) - File path to save Tensorboard info
-                                (default "/tensorboard")
-            tensorboard_interval (int) - Number of iterations between
-                                            tensorboard saves
-            epsilon_func (int -> float) - Function to choose new epsilon depending upon
-                                            the current iteration
-        Note:
-            If tensorboard_interval is less than 1 then recording not implemented
-        """
-        # Call parent initializer
-        super(QTrainer, self).__init__(agent, path, tensorboard_interval)
-        self.learn_rate = learn_rate
-        self.epsilon_func = epsilon_func
+    def train(self, mode = None):
+        """Trains the model with the set training parameters"""
+        options = {"online": self._online_mode, "episodic": self._episodic_mode}
+        if mode == None:
+            options[self.params["type"]]()
+        elif mode == self.params["type"]:
+            options[mode]()
 
-    def online(self, learn_rate = None, **kwargs):
+    def _online_mode(self):
+        # Get move data
+        ep = self.agent.episode[-1]
+        # Run trainer
+        self.online(ep[0], ep[1], ep[2])
+
+    def _episodic_mode(self):
+        # Get episode data
+        states = []
+        actions = []
+        rewards = []
+        for s, a, r in self.agent.episode:
+            states.append(s)
+            actions.append(a)
+            rewards.append(r)
+        # Run trainer
+        self.offline(states, actions, rewards)
+
+    def online(self, state, action, reward, learn_rate = None, **kwargs):
         """Gets a callable function for online training"""
-        return lambda s, a, r: self.online([s], [a], [r], 1, 1, learn_rate, **kwargs)
+        self.offline([state], [action], [reward], 1, 1, learn_rate, **kwargs)
 
-    def offline(self, states, actions, rewards, batch_size = 1, epochs = 1,
-                learn_rate = None, rotate = False):
+    def offline(self, states = None, actions = None, rewards = None, batch_size = None, epochs = None,
+                learn_rate = None, rotate = None):
         """
         Trains the agent over a set of state, action, reward triples
         Parameters:
@@ -440,11 +484,22 @@ class QTrainer (BaseTrainer.Trainer):
             Therefore, all targets in a given epochs use the same
             Q-function and are not effected by the others in the
             batch
-        """
-        # Default to default learning rate
-        if learn_rate == None:
-            learn_rate = self.learn_rate
 
+            If states, actions, and rewards are None, full history used
+        """
+        # Default to defaults if parameters not given
+        if learn_rate == None:
+            learn_rate = self.params["learn_rate"]
+        if rotate == None:
+            rotate = self.params["rotate"]
+        if epochs == None:
+            epochs = self.params["epochs"]
+        if batch_size == None:
+            batch_size = self.params["batch_size"]
+        if states == None or actions == None or rewards == None:
+            states = self.agent.states
+            actions = self.agent.actions
+            rewards = self.agent.rewards
         # Train for each epoch
         for epoch in range(epochs):
             # Calculate targets from states, actions, and rewards
@@ -477,27 +532,21 @@ class QTrainer (BaseTrainer.Trainer):
         # Chunk index list into batches of desired size
         batches = list(self.chunk(order, batch_size))
         # Train over each minibatch
+        summary = None
         for batch in batches:
             # Get the states and targets for the indicies in the batch and update
             summary = self.agent.update([states[b] for b in batch],
                                          [targets[b] for b in batch],
                                          learn_rate)
-            # Record if Tensorboard recording enabled
-            if self.record and (self.iteration % self.tensorboard_interval == 0):
-                # Write summary to file
-                self.writer.add_summary(summary, self.iteration)
-            # Increase iteration counter
-            self.iteration += 1
+        # Record if Tensorboard recording enabled
+        if self.record and (self.iteration % self.tensorboard_interval == 0)\
+                and summary != None:
+            # Write summary to file
+            self.writer.add_summary(summary, self.iteration)
+        # Increase iteration counter
+        self.iteration += 1
 
     def change_epsilon(self):
         """Changes the epsilon for e-greedy exploration as a function of iteration"""
-        if self.epsilon_func != None:
-            self.agent.epsilon = self.epsilon_func(self.iteration)
-
-def load_agent(filename):
-    with open(filename, "rb") as f:
-        loaded = pickle.load(f)
-        q = Q(loaded["params"]["layers"], gamma = loaded["params"]["gamma"],
-              name = loaded["params"]["name"], initialize = False)
-        q.initialized(w = loaded["weights"], b = loaded["biases"], force = True)
-        return q
+        if self.params["epsilon_func"] != None:
+            self.agent.epsilon = self.params["epsilon_func"](self.iteration)

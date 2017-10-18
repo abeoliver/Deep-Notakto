@@ -9,7 +9,7 @@ from agents.agent import Agent
 class RandomAgent (Agent):
     def __init__(self, env):
         super(RandomAgent, self).__init__()
-        self.name = "RandomPlus"
+        self.name = "Random"
         self.env = env
 
     def get_action(self, state):

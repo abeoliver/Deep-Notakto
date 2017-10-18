@@ -336,14 +336,14 @@ class GameWithConfidences (Visualization):
                     done = False if self.env.is_over() == 0 else True
                 # ---------- END COMPUTER MOVE ----------
             # ---------- END MAIN GAME ----------
+            # End game
+            self.a1.save_episode()
+            self.a2.save_episode()
             # If individual game is over
             if observation["info"]["illegal"]:
                 banner = "Player attempted illegal move"
             else:
                 banner = "PLAYER {} WINS".format(self.env.is_over())
-            # Save game buffers
-            self.a1.save_episode()
-            self.a2.save_episode()
             # ---------- FINAL SCREEN ----------
             board = self.env.observe()
             while True:
@@ -365,7 +365,8 @@ if __name__ == "__main__":
     from agents.human import Human
     from agents.Q import Q
     e = Env(3)
-    p1 = Human()
+    p2 = Human()
     # p2 = RandomAgent(e)
-    p2 = Q([9, 9])
+    p1 = Q([9, 100, 9], gamma = .5, epsilon = .1, name = "AA",
+                training = {"type": "episodic", "learn_rate": 1e-1, "rotate": True})
     vis = GameWithConfidences(e, p1, p2, show_confidences = True)

@@ -3,7 +3,8 @@
 # Deep Notakto Project
 
 import numpy as np
-import pickle
+import pickle, hashlib
+from time import time, localtime, asctime
 
 def save_set(name, states, actions, rewards):
     """Save a set of states, actions, and rewards"""
@@ -60,25 +61,49 @@ def get_move_dict(name, size):
             d[parts[0]] = bin_to_array(parts[1])
     return d
 
-def record(file, agent, trainer, quality = None):
-    a = str(agent.layers)
+def record(filename, agent, quality = None):
+    n = agent.name
+    a = str(agent.architecture)
     g = str(agent.gamma)
-    b = str(agent.beta)
-    lr = str(trainer.learn_rate)
-    i = str(trainer.iteration)
-    q = str(quality)
-    s = "\n{arch}{asp}{gamma}{gsp}{beta}{bsp}{learn}{lrsp}{iteration}{isp}{quality}".format(
-        arch = a, gamma = g, beta = b, learn = lr, iteration = i, quality = q, asp = " " * (33 - len(a)),
-        gsp = " " * (10 - len(g)), bsp = " " * (9 - len(b)), lrsp = " " * (17 - len(lr)), isp = " " * (14 - len(i)))
-    with open(file, 'a') as f:
+    if agent.beta != None:
+        b = str(agent.beta)
+    else:
+        b = "N\A"
+    lr = str(agent.trainer.params["learn_rate"])
+    i = str(agent.trainer.iteration)
+    if quality != None:
+        q = str(quality)
+    else:
+        q = "N/A"
+    s = "{name}{nsp}{arch}{asp}{gamma}{gsp}{beta}{bsp}{learn}{lrsp}{iteration}{isp}{wins}\n".format(
+        name = n, arch = a, gamma = g, beta = b, learn = lr, iteration = i, wins = q, nsp = " "* (26 - len(n)),
+        asp = " " * (40 - len(a)), gsp = " " * (10 - len(g)), bsp = " " * (9 - len(b)), lrsp = " " * (10 - len(lr)),
+        isp = " " * (13 - len(i))
+    )
+    with open(filename, 'a') as f:
         f.write(s)
+
+def update(filename, agent, quality = None):
+    # Remove the last line
+    remove_last_record(filename)
+    # Add a new record
+    record(filename, agent, quality)
+
+def remove_last_record(filename):
+    # Read lines
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    # Rewrite
+    with open(filename, "w") as f:
+        for line in lines[:-1]:
+            f.write(line)
 
 def new_record_file(name):
     with open(name, 'w') as f:
         f.writelines(["Experimental Trials : {name}\n".format(name = name),
                       "The Deep Notakto Poject\n",
-                      "ARCHITECTURE                     GAMMA     BETA     LEARNING RATE    ITERATIONS    QUALITY\n",
-                      ("=" * 118) + "\n"])
+                      "NAME                      ARCHITECTURE                            GAMMA     BETA     L-RATE    ITERS        QUALITY\n",
+                      ("=" * 120) + "\n"])
 
 def norm(x):
     """Normalize an array"""
@@ -87,3 +112,23 @@ def norm(x):
     if xmax == xmin:
         return x
     return (x - xmin) / (xmax - xmin)
+
+def seconds_to_time(seconds):
+	minutes = seconds // 60
+	return [minutes // 60, minutes % 60, seconds % 60]
+
+def elapsed_time(start):
+	new_time = time() - start
+	elapsed = [int(i) for i in seconds_to_time(new_time)]
+	clock = localtime(time())[3:5]
+	return "Elapsed {} : {} : {} (at {} : {})".format(elapsed[0], elapsed[1],
+													 elapsed[2], clock[0],
+													 clock[1])
+
+def unique_classifier():
+    return hashlib.sha1(str(asctime()).encode("utf-8")).hexdigest()[:5]
+
+def load_agent(filename, CLASS):
+    with open(filename, "rb") as f:
+        loaded = pickle.load(f)
+        return CLASS(**loaded)

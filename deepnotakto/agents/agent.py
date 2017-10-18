@@ -2,14 +2,18 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 from numpy.random import normal
+from numpy import zeros
 
 class Agent (object):
-    def __init__(self):
+    def __init__(self, training = {"type": None}):
         self.states = []
         self.actions = []
         self.rewards = []
         self.episode = []
         self.episode_lengths = []
+        self.training = training
+        self.architecture = "N/A"
+        self.name = "agent"
     
     def act(self, env):
         """
@@ -25,16 +29,13 @@ class Agent (object):
         observation = env.act(action)
         # Record state, action, reward
         self.add_episode(state, action, observation["reward"])
+        # Train online (may be avoided within the function w/ training params)
+        self.train("online")
+        # Return the results
         return observation
 
-    def train(self, **kwargs):
+    def train(self, mode = None, **kwargs):
         pass
-
-    def record(self, state, action, reward):
-        """Record an action"""
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
 
     def new_episode(self):
         """Reset the memory of an agent for a new episode"""
@@ -58,24 +59,24 @@ class Agent (object):
         # If episode hasn't been used, do nothing
         if len(self.episode) == 0:
             return None
-        # Fetch final reward
-        final_reward = self.episode[-1][2]
+        # If using final reward, record the final reward
+        if use_final:
+            # Fetch final reward
+            final_reward = self.episode[-1][2]
+            self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
+        # If using given reward, record that reward
+        elif reward != None:
+            self.episode = [(s, a, reward) for s, a, _ in self.episode]
         # Loop through each item in episode
         for s, a, r in self.episode:
             # Add to game record
             self.states.append(s)
             self.actions.append(a)
-            # If using final reward, record the final reward
-            if use_final:
-                self.rewards.append(final_reward)
-            # If using given reward, record that reward
-            elif reward != None:
-                self.rewards.append(reward)
-            # Use reward in episode otherwise
-            else:
-                self.rewards.append(r)
+            self.rewards.append(r)
         # Add the length of the episode to find episode later
         self.episode_lengths.append(len(self.episode))
+        # Train episodically (may be avoided within the function w/ training params)
+        self.train("episodic")
         # Clear episode
         self.episode = []
 
@@ -122,3 +123,11 @@ class Agent (object):
     def save(self, **kwargs):
         """Saves an agent to a file"""
         pass
+
+    def change_training(self, **kwargs):
+        """Changes the training parameters"""
+        for key in kwargs:
+            self.training[key] = kwargs[key]
+
+    def get_Q(self, state):
+        return zeros(state.shape)
