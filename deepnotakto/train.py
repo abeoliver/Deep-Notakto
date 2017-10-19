@@ -15,13 +15,15 @@ import agents.activated as activated
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = True,
-				save_a2 = False):
+				save_a2 = False, path = "", record_name = "record.txt"):
+	print("Traning Agents '{}' vs '{}'".format(a1.name, a2.name))
 	start = time()
 	if save_a1:
-		util.record("BB.txt", a1)
+		util.record(record_name, a1)
 	if save_a2:
-		util.record("BB2.txt", a2)
-	for r in range(rounds):
+		util.record(record_name, a2)
+	r = 0
+	while r < rounds or rounds < 0:
 		wins = [0, 0]
 		# Play a round, adding the wins to the count
 		for _ in range(round_length):
@@ -29,11 +31,13 @@ def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = True,
 		# Console information
 		console_print(start, wins, r, rounds, round_length)
 		if save_a1:
-			util.update("BB.txt", a1, "{} / {}".format(wins[0], round_length))
-			a1.save("agents/saves/{}.npz".format(a1.name))
+			util.update(record_name, a1, "{} / {}".format(wins[0], round_length))
+			a1.save("{}{}.npz".format(path, a1.name))
 		if save_a2:
-			util.update("BB2.txt", a2, "{} / {}".format(wins[1], round_length))
-			a2.save("agents/saves/{}.npz".format(a2.name))
+			util.update(record_name, a2, "{} / {}".format(wins[1], round_length))
+			a2.save("{}{}.npz".format(path, a2.name))
+		# Incrememnt round counter
+		r += 1
 
 def console_print(start, wins, round, rounds, round_length):
 	pct = int((float(wins[0]) / round_length) * 100)
@@ -65,19 +69,3 @@ def play(env, a1, a2):
 
 def ef(i, a = 1, b = 1, c = 0):
 	return max(0, min(1, (float(a) / pow(i, b)) + c))
-
-if __name__ == "__main__":
-	util.new_record_file("BB2.txt")
-	e = Env(4)
-	train_dict = {"type": "episodic", "learn_rate": 1e-8, "rotate": True,
-					   "epsilon_func": lambda x: ef(x, 300, .78, -0.08), "epochs": 1,
-					   "batch_size": -1}
-	"""
-	a = Q([16, 100, 400, 16], gamma = .7, epsilon = 1.0,
-		   training = train_dict) """
-	a = util.load_agent("agents/saves/Q(baad4).npz", Q)
-	a.training_params(training = train_dict)
-	a.classifier = "a1a1a"
-	a.name = "Q(a1a1a)"
-	r = RandomAgent(e)
-	train_agent(e, r, a, 100000, 100, save_a1 = False, save_a2 = True)

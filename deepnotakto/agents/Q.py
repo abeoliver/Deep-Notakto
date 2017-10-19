@@ -98,6 +98,7 @@ class Q (Agent):
                     for i, bias in enumerate(self.b):
                         self.variable_summaries(bias, "bias_" + str(i))
                     # Predicted output
+                    self.activation_layers = []
                     self.y = self._feed(self.x)
                     self.initialized = True
                     self.session.run(tf.global_variables_initializer())
@@ -196,6 +197,26 @@ class Q (Agent):
             self._bias_assign = [self.b[n].assign(self._bias_assign_ph[n])
                                    for n in range(len(self.layers) - 1)]
 
+    def _feed(self, inp, n = 0):
+        """
+        Recursively compute x.W_i + b_i for the layers of the network
+        Parameters:
+            inp ((1, N) array) - Input into the layer
+            n (int) - Current layer being applied
+        Returns:
+            (1, N) array - Output of the given layer (last layer outputs network output)
+        """
+        # Output of layer
+        out = tf.add(tf.matmul(inp, self.w[n], name="feedmul{}".format(n)), self.b[n],
+                     name="feedadd{}".format(n))
+        # Add to activations list
+        self.activation_layers.append(out)
+        # Base case (-2 because final layer is output and lists start at zero)
+        if n == len(self.layers) - 2:
+            return out
+        # Continue recursion
+        return self._feed(out, n + 1)
+
     def target(self, state, action, q, reward):
         """
         Calculate the target values for the network in a given situation
@@ -259,25 +280,6 @@ class Q (Agent):
                                       feed_dict = {self.x: [np.reshape(state, -1)]})[0],
                           state.shape)
 
-    def _feed(self, inp, n = 0):
-        """
-        Recursively compute x.W_i + b_i for the layers of the network
-        Parameters:
-            inp ((1, N) array) - Input into the layer
-            n (int) - Current layer being applied
-        Returns:
-            (1, N) array - Output of the given layer (last layer outputs network output)
-        """
-        # Base case
-        if n == len(self.layers) - 2:
-            # Minus 2 because final layer does no math (-1) and the lists start at zero (-1)
-            return tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
-                          name = "feedadd{}".format(n))
-        # Continue recursion
-        out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
-                     name = "feedadd{}".format(n))
-        return self._feed(out, n + 1)
-
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
         Update (train) a model over a given set of states and targets
@@ -334,6 +336,21 @@ class Q (Agent):
                 # Log var as a histogram
                 tf.summary.histogram('histogram', var)
 
+    def get_layer(self, inp, layer):
+        """Passes an input through the model to a particular layer"""
+        # Pass the state to the model and get array of Q-values
+        return self.activation_layers[layer].eval(
+            session = self.session,
+            feed_dict={self.x: [np.reshape(inp, -1)]})[0]
+
+    def get_node_weights(self, layer, node, reshape = -1):
+        """Gets the weight matrix for a given node"""
+        return np.reshape(self.get_weight(layer)[:, node], reshape)
+
+    def get_node_activations(self, inp, layer, node):
+        """Gets the activation matrix of node at a cerain input"""
+        pass
+
     def get_weight(self, index):
         """Gets an evaluated weight matrix from layer 'index'"""
         return self.w[index].eval(session = self.session)
@@ -344,7 +361,7 @@ class Q (Agent):
 
     def get_bias(self, index):
         """Gets an evaluated bias matrix from layer 'index'"""
-        return self.b[index].eval(session = self.session)
+        return self.b[index].eval(session = self.session)[0]
 
     def get_biases(self):
         """Gets all bias matricies"""
