@@ -28,9 +28,9 @@ class Env (object):
         self.reset()
         if rewards == None:
             self.rewards = {
-                "illegal": -100,
-                "forced": 10,
-                "loss": -5
+                "illegal": -10,
+                "forced": 1,
+                "loss": -1
             }
         else:
             self.rewards = rewards

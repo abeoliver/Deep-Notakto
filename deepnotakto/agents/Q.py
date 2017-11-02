@@ -14,7 +14,7 @@ import trainer as BaseTrainer
 class Q (Agent):
     def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = None, name = None,
                  initialize = True, deterministic = True, classifier = None,
-                 training = None, iterations = 0, **kwargs):
+                 training = {"mode": "episodic"}, iterations = 0, **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -241,7 +241,16 @@ class Q (Agent):
         maxQ = np.max(new_Q_max)
         # Return a new Q vector updated by the Bellman equation
         Q = np.reshape(np.copy(q), -1)
-        Q[np.argmax(action)] = reward + self.gamma * maxQ
+        c = float(Q[np.argmax(action)])
+        Q[np.argmax(action)] = reward + max(0.0, self.gamma * maxQ)
+        if self.mop:
+            print("-------------------")
+            print("Action")
+            print(action)
+            print("Reward        -- {}".format(reward))
+            print("Current Value -- {}".format(c))
+            print("Future        -- {}".format(maxQ))
+            print("Bellman -- {}".format(reward + max(0.0, self.gamma * maxQ)))
         return np.reshape(Q, new_state.shape)
 
     def get_action(self, state):
@@ -430,15 +439,23 @@ class Q (Agent):
                     remaining.append(z)
         return remaining
 
-    def train(self, mode = ""):
-        self.trainer.train(mode)
+    def train(self, mode = "", **kwargs):
+        self.trainer.train(mode, **kwargs)
 
     def training_params(self, training = None):
         self.trainer.training_params(training)
 
+    def dual(self):
+        """
+        Creates a shell player whos training affects this agent
+        Returns:
+            Q Agent
+        """
+        return Dual(self)
+
 class QTrainer (BaseTrainer.Trainer):
-    def training_params(self, training = None):
-        defaults = {
+    def default_params(self):
+        return {
             "type": "episodic",
             "learn_rate": 1e-4,
             "rotate": False,
@@ -446,39 +463,6 @@ class QTrainer (BaseTrainer.Trainer):
             "epochs": 1,
             "batch_size": 1
         }
-        if training == None:
-            self.params = defaults
-        else:
-            self.params = training
-            for key in defaults:
-                if not key in self.params:
-                    self.params[key] = defaults[key]
-
-    def train(self, mode = None):
-        """Trains the model with the set training parameters"""
-        options = {"online": self._online_mode, "episodic": self._episodic_mode}
-        if mode == None:
-            options[self.params["type"]]()
-        elif mode == self.params["type"]:
-            options[mode]()
-
-    def _online_mode(self):
-        # Get move data
-        ep = self.agent.episode[-1]
-        # Run trainer
-        self.online(ep[0], ep[1], ep[2])
-
-    def _episodic_mode(self):
-        # Get episode data
-        states = []
-        actions = []
-        rewards = []
-        for s, a, r in self.agent.episode:
-            states.append(s)
-            actions.append(a)
-            rewards.append(r)
-        # Run trainer
-        self.offline(states, actions, rewards)
 
     def online(self, state, action, reward, learn_rate = None, **kwargs):
         """Gets a callable function for online training"""
@@ -567,3 +551,19 @@ class QTrainer (BaseTrainer.Trainer):
         """Changes the epsilon for e-greedy exploration as a function of iteration"""
         if self.params["epsilon_func"] != None:
             self.agent.epsilon = self.params["epsilon_func"](self.iteration)
+
+class Dual (Agent):
+    def __init__(self, host):
+        super(Dual, self).__init__()
+        self.host = host
+        self.training = self.host.training
+        self.name = host.name + "_dual"
+
+    def get_action(self, state):
+        return self.host.get_action(state)
+
+    def get_Q(self, state):
+        return self.host.get_Q(state)
+
+    def train(self, mode = ""):
+        self.host.train(mode, source_agent = self)

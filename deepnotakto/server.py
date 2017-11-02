@@ -16,6 +16,7 @@ train_dict = {"type": "episodic", "learn_rate": 1e-8, "rotate": True,
                    "epsilon_func": lambda x: ef(x, 20000), "epochs": 1,
                    "batch_size": -1}
 a = Q([16, 100, 400, 16], gamma = .7, epsilon = 1.0,
-       training = train_dict)
+       training = train_dict, tensorboard_interval = 0)
 r = RandomAgent(e)
-train_agent(e, a, a, -1, 1000, save_a1 = False, save_a2 = True)
+train_agent(e, r, a, -1, 1000, save_a1 = False, save_a2 = True,
+            path = "agents/saves/")

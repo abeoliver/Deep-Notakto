@@ -8,7 +8,7 @@ from random import shuffle
 from util import rotate as rotate_func
 
 class Trainer (object):
-    def __init__(self, agent, training = None, path = None, tensorboard_interval = 100,
+    def __init__(self, agent, training = None, path = None, tensorboard_interval = 0,
                  iterations = 0):
         """
         Initializes a Trainer object
@@ -34,23 +34,54 @@ class Trainer (object):
         else:
             self.record = False
 
-    def default_training_dict(self):
-        self.training = {}
+    def default_params(self):
+        return {}
 
-    def online(self, **kwargs):
+    def training_params(self, training = None):
+        defaults = dict(self.default_params())
+        if training == None:
+            self.params = defaults
+        else:
+            self.params = training
+            for key in defaults:
+                if not key in self.params:
+                    self.params[key] = defaults[key]
+
+    def train(self, mode = None, source_agent = None, **kwargs):
+        """Trains the model with the set training parameters"""
+        options = {"online": self._online_mode, "episodic": self._episodic_mode}
+        if mode == None:
+            options[self.params["type"]](source_agent, **kwargs)
+        elif mode in ["online", "episodic"]:
+            options[mode](source_agent, **kwargs)
+
+    def _online_mode(self, source_agent = None, **kwargs):
+        if source_agent == None:
+            source_agent = self.agent
+        # Get move data
+        ep = source_agent.episode[-1]
+        # Run trainer
+        self.online(ep[0], ep[1], ep[2], **kwargs)
+
+    def _episodic_mode(self, source_agent = None, **kwargs):
+        if source_agent == None:
+            source_agent = self.agent
+        # Get episode data
+        states = []
+        actions = []
+        rewards = []
+        for s, a, r in source_agent.episode:
+            states.append(s)
+            actions.append(a)
+            rewards.append(r)
+        # Run trainer
+        self.offline(states, actions, rewards, **kwargs)
+
+    def online(self, state, action, reward, **kwargs):
         """Gets a callable function for online training"""
-        return lambda s, a, r: self.online([s], [a], [r], 1, 1)
+        return lambda x: None
 
-    def train(self, states, actions, rewards, batch_size = 1, epochs = 1):
-        """
-        Trains the agent over a set of state, action, reward triples
-        Parameters:
-            states (List of (N, N) arrays) - List of states
-            actions (List of (N, N) arrays) - Actions taken on states
-            rewards (List of floats) - Rewards for each action
-            batch_size (int) - Number of samples in each minibatch
-            epochs (int) - Number of iterations over the entire dataset
-        """
+    def offline(self, **kwargs):
         pass
 
     def get_rotations(self, states, targets):

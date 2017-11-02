@@ -5,7 +5,7 @@ from numpy.random import normal
 from numpy import zeros
 
 class Agent (object):
-    def __init__(self, training = {"type": None}):
+    def __init__(self, training = {"mode": None}):
         self.states = []
         self.actions = []
         self.rewards = []
@@ -30,7 +30,8 @@ class Agent (object):
         # Record state, action, reward
         self.add_episode(state, action, observation["reward"])
         # Train online (may be avoided within the function w/ training params)
-        self.train("online")
+        if self.training["mode"] == "online":
+            self.train("online")
         # Return the results
         return observation
 
@@ -76,7 +77,8 @@ class Agent (object):
         # Add the length of the episode to find episode later
         self.episode_lengths.append(len(self.episode))
         # Train episodically (may be avoided within the function w/ training params)
-        self.train("episodic")
+        if self.training["mode"] == "episodic":
+            self.train("episodic")
         # Clear episode
         self.episode = []
 

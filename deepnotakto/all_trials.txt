@@ -1,4 +1,0 @@
-Experimental Trials : all_trials.txt
-The Deep Notakto Poject
-ARCHITECTURE                     GAMMA     BETA     LEARNING RATE    ITERATIONS    QUALITY
-======================================================================================================================

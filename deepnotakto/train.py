@@ -3,18 +3,13 @@
 # Deep Notakto Project
 
 import os
-from environment import Env
-from trainer import Trainer
-from agents.Q import Q
-from agents.random_agent import RandomAgent
 from time import time
 from random import choice
 import util
-import agents.activated as activated
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = True,
+def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
 				save_a2 = False, path = "", record_name = "record.txt"):
 	print("Traning Agents '{}' vs '{}'".format(a1.name, a2.name))
 	start = time()

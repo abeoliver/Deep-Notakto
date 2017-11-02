@@ -8,9 +8,6 @@ Q(d753f)                  [9, 200, 9]                             0.7       N\A 
 Q(dc95e)                  [9, 100, 9]                             0.7       N\A      0.0001    2100         +97 / 100
     - Starts center, plays knight strategy, not beaten by human
     - 1909 params
-Q(fa6a8)                  [9, 26, 9]                              0.7       N\A      0.0001    2500         +58 / 100
-    - Starts sides, can be beaten *sometimes* by blank diagonal
-    - 503 params
 Q(01f01)                  [9, 26, 9]                              0.7       N\A      0.0003    2500         +78 / 100
     - Starts corners, can be beaten by the the blank diagonal strategy
     - 503 params
@@ -20,16 +17,11 @@ Q(b8d6f)                  [9, 26, 9]                              0.7       N\A 
 Q(6e2bb)                  [9, 20, 9]                              0.7       N\A      0.0002    1800         +95 / 100
     - Starts center, plays knight strategy, not beaten by human
     - 389 params
-Q(38450)                  [9, 10, 9]                              0.7       N\A      0.0002    2500         +77 / 100
-    - Starts corners
-    - 199 params
 Q(28e3c)                  [9, 10, 9]                              0.7       N\A      0.0002    2100         +92 / 100
     (KING)
     - Plays a modified knight strategy, not yet beaten
     - 199 params
-Q(8cfc3)                  [9, 8, 9]                               0.7       N\A      0.0001    2500         +48 / 100
 Q(a4e25)                  [9, 9, 9]                               0.7       N\A      0.0001    2500         +79 / 100
     - Starts corners but plays well
     - 180 params
-Q(e5a7a)                  [9, 20, 9]                              1.0       N\A      0.0001    100          +10 / 100
-Q(3c7e5)                  [9, 20, 9]                              1.0       N\A      1e-05     2500         +54 / 100
+Q(dba68)                  [16, 100, 400, 16]                      0.7       N\A      1e-08     1000         987 / 1000
