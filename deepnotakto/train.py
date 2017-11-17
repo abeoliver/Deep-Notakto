@@ -18,7 +18,14 @@ def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
 	if save_a2:
 		util.record(record_name, a2)
 	r = 0
+	a1_e = lambda x: .5
+	a2_e = lambda x: 0
 	while r < rounds or rounds < 0:
+		"""
+		if r % 200 == 0:
+			a1.change_param("epsilon_func", a1_e)
+			a2.change_param("epsilon_func", a2_e)
+			a1_e, a2_e = [a2_e, a1_e]"""
 		wins = [0, 0]
 		# Play a round, adding the wins to the count
 		for _ in range(round_length):

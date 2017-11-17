@@ -66,8 +66,9 @@ class Q (Agent):
         """
         if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
-            self._graph = tf.Graph()
-            self.session = tf.Session(graph = self._graph)
+            #tf.reset_default_graph()
+            #self._graph = tf.Graph()
+            self.session = tf.Session()#graph = self._graph)
             # Initialize model
             self.init_model(weights = weights, biases = biases)
             # Initialize training variables like the loss and the optimizer
@@ -83,86 +84,85 @@ class Q (Agent):
             weights (List of (N, M) arrays) - Initial weight matricies
             biases (List of (1, N) arrays) - Initial bias matricies
         """
-        with self._graph.as_default():
-            with tf.name_scope("model"):
-                if self.keras:
-                    self.model = tf.keras.models.Sequential()
+        #with self._graph.as_default():
+        with tf.name_scope("model"):
+            if self.keras:
+                self.model = tf.keras.models.Sequential()
+                self.model.add(tf.layers.Dense(
+                    self.layers[1],
+                    input_shape = [None, self.layers[0]],
+                    name = "input"
+                ))
+                for layer in range(2, len(self.layers)):
                     self.model.add(tf.layers.Dense(
-                        self.layers[1],
-                        input_shape = [None, self.layers[0]],
-                        name = "input"
-                    ))
-                    for layer in range(2, len(self.layers)):
-                        self.model.add(tf.layers.Dense(
-                            self.layers[layer],
-                            name = "dense_{}".format(layer)))
-                    self.model.compile(optimizer = "sgd",
-                                       loss = "mean_squared_error",
-                                       metrics = ['accuracy'])
+                        self.layers[layer],
+                        name = "dense_{}".format(layer)))
+                self.model.compile(optimizer = "sgd",
+                                   loss = "mean_squared_error",
+                                   metrics = ['accuracy'])
+            else:
+                if not self.initialized:
+                    self.x = tf.placeholder(tf.float32,
+                                            shape = [None, self.layers[0]],
+                                            name = "inputs")
+                    self._init_weights(weights)
+                    # Tensorboard visualizations
+                    for i, weight in enumerate(self.w):
+                        self.variable_summaries(weight, "weight_" + str(i))
+                    self._init_biases(biases)
+                    # Tensorboard visualizations
+                    for i, bias in enumerate(self.b):
+                        self.variable_summaries(bias, "bias_" + str(i))
+                    # Predicted output
+                    self.activation_layers = []
+                    self.y = self._feed(self.x)
+                    self.initialized = True
+                    self.session.run(tf.global_variables_initializer())
                 else:
-                    if not self.initialized:
-                        self.x = tf.placeholder(tf.float32,
-                                                shape = [None, self.layers[0]],
-                                                name = "inputs")
-                        self._init_weights(weights)
-                        # Tensorboard visualizations
-                        for i, weight in enumerate(self.w):
-                            self.variable_summaries(weight, "weight_" + str(i))
-                        self._init_biases(biases)
-                        # Tensorboard visualizations
-                        for i, bias in enumerate(self.b):
-                            self.variable_summaries(bias, "bias_" + str(i))
-                        # Predicted output
-                        self.activation_layers = []
-                        self.y = self._feed(self.x)
-                        self.initialized = True
-                        self.session.run(tf.global_variables_initializer())
-                    else:
-                        if w != None:
-                            self.set_weights(weights)
-                        if b != None:
-                            self.set_biases(biases)
+                    if w != None:
+                        self.set_weights(weights)
+                    if b != None:
+                        self.set_biases(biases)
 
     def _init_training_vars(self):
         """Initialize training procedure"""
-        with self._graph.as_default():
-            with tf.name_scope("training"):
-                if not self.keras:
-                    # Targets
-                    self.q_targets = tf.placeholder(tf.float32,
-                                                    shape = [None, self.layers[0]],
-                                                    name = "q_targets")
-                    # Learning rate
-                    self.learn_rate = tf.placeholder(tf.float32)
-                    # Regular loss
-                    data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
-                                              name = "data_loss")
-                    tf.summary.scalar("Data_loss", data_loss)
-                    # Loss and Regularization
-                    self.beta_ph = tf.placeholder(tf.float32, name = "beta")
-                    # L2 Regularization
-                    if self.beta != None:
-                        with tf.name_scope("regularization"):
-                            self.l2 = self._l2_recurse(self.w)
-                            tf.summary.scalar("L2", self.l2)
-                            loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
-                                              name = "regularized_loss")
-                    else:
-                        loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
-                    loss = tf.verify_tensor_all_finite(
-                        tf.reduce_mean(loss, name = "loss"),
-                        msg = "Inf or NaN values",
-                        name = "FiniteVerify"
-                    )
-                    tf.summary.scalar("Loss", loss)
-                    # Optimizer
-                    self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                        self.learn_rate,
-                                                                        name = "optimizer")
-                    # Updater (minimizer)
-                    self.update_op = self._optimizer.minimize(loss, name ="update")
-                    # Tensorboard
-                    self.summary_op = tf.summary.merge_all()
+        with tf.name_scope("training"):
+            if not self.keras:
+                # Targets
+                self.q_targets = tf.placeholder(tf.float32,
+                                                shape = [None, self.layers[-1]],
+                                                name = "q_targets")
+                # Learning rate
+                self.learn_rate = tf.placeholder(tf.float32)
+                # Regular loss
+                data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
+                                          name = "data_loss")
+                tf.summary.scalar("Data_loss", data_loss)
+                # Loss and Regularization
+                self.beta_ph = tf.placeholder(tf.float32, name = "beta")
+                # L2 Regularization
+                if self.beta != None:
+                    with tf.name_scope("regularization"):
+                        self.l2 = self._l2_recurse(self.w)
+                        tf.summary.scalar("L2", self.l2)
+                        loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
+                                          name = "regularized_loss")
+                else:
+                    loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
+                loss = tf.verify_tensor_all_finite(
+                    tf.reduce_mean(loss, name = "loss"),
+                    msg = "Inf or NaN values",
+                    name = "FiniteVerify"
+                )
+                tf.summary.scalar("Loss", loss)
+                # Optimizer
+                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                    self.learn_rate,
+                                                                    name = "optimizer")
+                # Updater (minimizer)
+                self.update_op = self._optimizer.minimize(loss, name ="update")
+                # Tensorboard
+                self.summary_op = tf.summary.merge_all()
 
     def _init_weights(self, w = None):
         """
@@ -307,8 +307,8 @@ class Q (Agent):
         """
         # Pass the state to the model and get array of Q-values
         if self.keras:
-            with self._graph.as_default():
-                return self.predict(state)
+            #with self._graph.as_default():
+            return self.predict(state)
         else:
             return np.reshape(self.y.eval(session = self.session,
                                           feed_dict = {self.x: [np.reshape(state, -1)]})[0],
@@ -334,12 +334,13 @@ class Q (Agent):
         STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         TARGETS = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
         if self.keras:
-            self.model.fit(STATES, TARGETS, epochs = 1, verbose = 0)
+            self.model.fit(states, targets, epochs = 1, verbose = 0)
         else:
             # Default to self.beta if no beta is given
             if beta == None:
                 beta = self.beta
             # Construct feed dictionary for the optimization step
+            print(TARGETS)
             feed_dict = {self.x: STATES, self.q_targets: TARGETS,
                          self.learn_rate: learn_rate, self.beta_ph: beta}
             # Optimize the network and return the tensorboard summary information

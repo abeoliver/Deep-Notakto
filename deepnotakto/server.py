@@ -13,8 +13,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 e = Env(4)
 train_dict = {"type": "episodic", "learn_rate": 1e-8, "rotate": True,
-                   "epsilon_func": lambda x: ef(x, 20000), "epochs": 1,
-                   "batch_size": -1}
+              "epsilon_func": lambda x: ef(x, 20000), "epochs": 1,
+              "batch_size": -1}
 a = Q([16, 100, 400, 16], gamma = .7, epsilon = 1.0,
        training = train_dict, tensorboard_interval = 0)
 r = RandomAgent(e)

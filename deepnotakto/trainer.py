@@ -34,6 +34,9 @@ class Trainer (object):
         else:
             self.record = False
 
+    def change_param(self, name, value):
+        self.params[name] = value
+
     def default_params(self):
         return {}
 

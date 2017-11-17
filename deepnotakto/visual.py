@@ -319,7 +319,7 @@ class GameWithConfidences (Visualization):
                     # Clear button
                     button = ""
                     # Update banner
-                    banner == "PLAYER {}".format((self.env.turn % 2) + 1)
+                    banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                     # Play the agent corresponding to the current turn
                     player = [self.a1, self.a2][self.env.turn % 2]
                     if self.show_confidences:

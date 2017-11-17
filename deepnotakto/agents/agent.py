@@ -64,7 +64,8 @@ class Agent (object):
         if use_final:
             # Fetch final reward
             final_reward = self.episode[-1][2]
-            self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
+            if final_reward >= -1:
+                self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
         # If using given reward, record that reward
         elif reward != None:
             self.episode = [(s, a, reward) for s, a, _ in self.episode]
@@ -106,21 +107,6 @@ class Agent (object):
         a = sum(self.episode_lengths[:i])
         b = sum(self.episode_lengths[:i + 1])
         return zip(self.states[a:b], self.actions[a:b], self.rewards[a:b])
-
-    def use_final_reward(self, epsiode_index = -1):
-        """
-        Use the final reward of an episode for the episode of the entire episode
-        Parameters:
-            epsiode_index (int) - Epsiode to change (default most recent)
-        """
-        # Get indexes of desired episode
-        length = self.episode_lengths[epsiode_index]
-        # Get starting index
-        start = sum(self.episode_lengths[:i])
-        # Get final reward
-        reward = self.rewards[start + length - 1]
-        # Apply to all in episode
-        self.rewards[start : start + le - 1] = [reward] * (start + le - 1)
 
     def save(self, **kwargs):
         """Saves an agent to a file"""
