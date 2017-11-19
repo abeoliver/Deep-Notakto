@@ -10,7 +10,8 @@ import util
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
-				save_a2 = False, path = "", record_name = "record.txt"):
+				save_a2 = False, path = "", record_name = "record.txt",
+				constant = True):
 	print("Traning Agents '{}' vs '{}'".format(a1.name, a2.name))
 	start = time()
 	if save_a1:
@@ -21,15 +22,14 @@ def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
 	a1_e = lambda x: .5
 	a2_e = lambda x: 0
 	while r < rounds or rounds < 0:
-		"""
-		if r % 200 == 0:
-			a1.change_param("epsilon_func", a1_e)
-			a2.change_param("epsilon_func", a2_e)
-			a1_e, a2_e = [a2_e, a1_e]"""
 		wins = [0, 0]
 		# Play a round, adding the wins to the count
-		for _ in range(round_length):
-			wins[play(env, a1, a2) - 1] += 1
+		for game in range(round_length):
+			if game % 2 == 0 or constant:
+				wins[play(env, a1, a2) - 1] += 1
+			else:
+				# Winner is opposite of agent number
+				wins[0 if play(env, a2, a1) == 2 else 1] += 1
 		# Console information
 		console_print(start, wins, r, rounds, round_length)
 		if save_a1:

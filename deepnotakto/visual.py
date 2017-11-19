@@ -275,14 +275,16 @@ class GameWithConfidences (Visualization):
                 banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                 # Display the game screen
                 board = self.env.observe()
-                self.display(board, confidences, banner, next = True)
+                self.display(board, confidences, banner,
+                             next = not (self.a1_human and self.a2_human))
+                h_advance = False
                 # ---------- HUMAN MOVE GUI LOOP (if needed) ----------
                 if (self.env.turn % 2 == 0 and self.a1_human) or \
                     (self.env.turn % 2 == 1 and self.a2_human):
                     # Run until a valid human move has been played
                     while True:
                         # Draw screen
-                        self.display(board, confidences, banner, next = True)
+                        self.display(board, confidences, banner, next = False)
                         # Run event loop and fetch button
                         button = self.events()
                         # Parse mouse input (decide which move the human wants)
@@ -310,14 +312,15 @@ class GameWithConfidences (Visualization):
                     # If over, end game
                     if done: break
                     # If not over, advance to next move automatically
-                    else: button = "next"
+                    else: h_advance = True
                 # ---------- END HUMAN MOVE GUI LOOP ----------
                 # ---------- COMPUTER MOVE (if needed) ----------
                 # If advanced to next move (by human or by human move) and
                 #   next player is an AI, enter AI loop
-                if button == "next" and not (self.a1_human and self.a2_human):
+                if (button == "next" or h_advance) and not (self.a1_human and self.a2_human):
                     # Clear button
                     button = ""
+                    h_advance = False
                     # Update banner
                     banner = "PLAYER {}".format((self.env.turn % 2) + 1)
                     # Play the agent corresponding to the current turn
@@ -340,9 +343,7 @@ class GameWithConfidences (Visualization):
             self.a1.save_episode()
             self.a2.save_episode()
             # If individual game is over
-            if observation["info"]["illegal"]:
-                banner = "Player attempted illegal move"
-            else:
+            if banner != "Player attempted illegal move":
                 banner = "PLAYER {} WINS".format(self.env.is_over())
             # ---------- FINAL SCREEN ----------
             board = self.env.observe()

@@ -17,7 +17,6 @@ class RandomAgent (Agent):
         player = 2 if self.env.turn % 2 == 0 else 1
         not_loser = []
         move = zeros(state.shape, int32)
-        winning_move = False
         # Choose a winner and identify non-losers
         for m in possible:
             # Make move temporarily
@@ -28,18 +27,12 @@ class RandomAgent (Agent):
                 continue
             # If forced loss on opponent, choose move
             if self.env.forced(new_state):
-                move = m
-                winning_move = True
-                break
+                return m
             # If neither, remember that it is a not a losing move
             not_loser.append(m)
-        if winning_move:
-            # Don't choose new move if move already chosen
-            pass
-        elif len(not_loser) >= 1:
+        if len(not_loser) >= 1:
             # If there are non-losing move, choose one randomly
-            move = choice(not_loser)
+            return choice(not_loser)
         else:
             # If all moves are losses, choose any
-            move = choice(possible)
-        return move
+            return choice(possible)

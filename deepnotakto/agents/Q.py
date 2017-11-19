@@ -25,7 +25,6 @@ class Q (Agent):
                             is not implemented)
             name (string) - Name of the agent and episodes model
             initialize (bool) - Initialize the model randomly or not
-            deterministic (bool) - Make decisions deterministically or stochastically
             training (dict) - Parameters for training
             KWARGS are passed to the model initializer
         """
@@ -86,19 +85,21 @@ class Q (Agent):
         with self._graph.as_default():
             with tf.name_scope("model"):
                 if self.keras:
-                    self.model = tf.keras.models.Sequential()
-                    self.model.add(tf.layers.Dense(
-                        self.layers[1],
-                        input_shape = [None, self.layers[0]],
-                        name = "input"
-                    ))
-                    for layer in range(2, len(self.layers)):
-                        self.model.add(tf.layers.Dense(
-                            self.layers[layer],
-                            name = "dense_{}".format(layer)))
-                    self.model.compile(optimizer = "sgd",
-                                       loss = "mean_squared_error",
-                                       metrics = ['accuracy'])
+                    inputs = tf.keras.Input(shape = [None, self.layers[0]],
+                                            name = "INPUT")
+                    x = inputs
+                    for layer in range(1, len(self.layers) - 1):
+                        x = tf.layers.Dense(self.layers[layer])(x)
+                    outputs = tf.layers.Dense(self.layers[-1])(x)
+                    self.model = tf.keras.models.Model(inputs = inputs,
+                                                       outputs = outputs)
+                    self.model.compile(optimizer="sgd",
+                                       loss="mean_squared_error",
+                                       metrics=['accuracy'])
+                    """
+                    self.keras_tensorboard = tf.keras.callbacks.TensorBoard(
+                        log_dir = "tensorboard/{}".format(self.name)
+                    )"""
                 else:
                     if not self.initialized:
                         self.x = tf.placeholder(tf.float32,
@@ -176,9 +177,8 @@ class Q (Agent):
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
         else:
-            self.w = [tf.Variable(tf.random_normal([self.layers[n],
-                                                    self.layers[n + 1]],
-                                                   dtype = tf.float32),
+            self.w = [tf.Variable(tf.random_normal([self.layers[n], self.layers[n + 1]],
+                                                   dtype = tf.float32, stddev = .2),
                                   name="weights_{}".format(n))
                       for n in range(len(self.layers) - 1)]
         # Get assign opss
@@ -201,8 +201,7 @@ class Q (Agent):
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
         else:
-            self.b = [tf.Variable(tf.random_normal([1, self.layers[n + 1]],
-                                                   dtype = tf.float32),
+            self.b = [tf.Variable(tf.zeros([1, self.layers[n + 1]], dtype = tf.float32),
                                   name = "biases_{}".format(n))
                       for n in range(len(self.layers) - 1)]
         # Get assign opss
@@ -232,48 +231,57 @@ class Q (Agent):
         # Continue recursion
         return self._feed(out, n + 1)
 
-    def target(self, state, action, q, reward):
+    def target(self, state, action, reward):
         """
         Calculate the target values for the network in a given situation
         Parameters:
             state ((N, N) array) - Environment state
             action ((N, N) array) - Agents taken action
-            q ((N, N) array) - Current Q values
             reward (float) - Scalar reward for the action on the state
         Returns:
             (N, N) array - Target Q matrix for the given state, action, reward pair
         """
         # Apply action
         new_state = np.add(state, action)
-        # Get max Q values after any move opponent could make
-        new_Q_max = []
-        for move in self.action_space(new_state):
-            # Make the move
-            temp_state = np.add(move, new_state)
-            # Find the max Q value
-            new_Q_max.append(np.max(self.get_Q(temp_state)))
-        # Get max of all Q values
-        maxQ = np.max(new_Q_max)
-        # Return a new Q vector updated by the Bellman equation
-        Q = np.reshape(np.copy(q), -1)
-        c = float(Q[np.argmax(action)])
-        Q[np.argmax(action)] = reward + self.gamma * maxQ
+        # Get current Q values
+        Q = np.reshape(np.copy(self.get_Q(state)), -1)
         if self.mop:
             print("-------------------")
+            print("PLAYER :: {}".format(self.name))
             print("State   Action")
             def get_p(array):
                 s = str(array).split("\n ")
                 s[0] = s[0][1:]
                 s[-1] = s[-1][:-1]
                 return s
-            s = get_p(state)
-            a = get_p(action)
-            for i in range(len(s)):
-                print(s[i] + "  " + a[i])
+            def two(x, y):
+                s = get_p(x)
+                a = get_p(y)
+                for i in range(len(s)):
+                    print(s[i] + "  " + a[i])
+            two(state, action)
             print("Reward        -- {}".format(reward))
+            c = float(Q[np.argmax(action)])
             print("Current Value -- {}".format(c))
-            print("Future        -- {}".format(maxQ))
-            print("Bellman       -- {}".format(reward + self.gamma * maxQ))
+        if self.is_over(new_state):
+            # Return a new Q vector updated by the Bellman equation
+            Q[np.argmax(action)] = reward
+        else:
+            # Get max Q values after any move opponent could make
+            new_Q_max = []
+            for move in self.action_space(new_state):
+                # Make the move
+                temp_state = np.add(move, new_state)
+                # Find the max Q value
+                new_Q_max.append(np.max(self.get_Q(temp_state)))
+            # Get max of all Q values
+            maxQ = np.max(new_Q_max)
+            # Return a new Q vector updated by the Bellman equation
+            Q[np.argmax(action)] = reward + self.gamma * maxQ
+            if self.mop:
+                print("Future        -- {}".format(maxQ))
+                print("Bellman       -- {}".format(Q[np.argmax(action)]))
+                print("Delta         -- {}".format(Q[np.argmax(action)] - c))
         return np.reshape(Q, new_state.shape)
 
     def get_action(self, state):
@@ -307,7 +315,6 @@ class Q (Agent):
         """
         # Pass the state to the model and get array of Q-values
         if self.keras:
-            with self._graph.as_default():
                 return self.predict(state)
         else:
             return np.reshape(self.y.eval(session = self.session,
@@ -316,8 +323,10 @@ class Q (Agent):
 
     def predict(self, state):
         if self.keras:
-            return np.reshape(self.model.predict(np.array([[state.reshape(-1)]])),
-                              state.shape)
+            with self.session.as_default():
+                with self._graph.as_default():
+                    return np.reshape(self.model.predict(state.reshape((1, 1, state.size))),
+                                      state.shape)
 
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
@@ -334,7 +343,11 @@ class Q (Agent):
         STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         TARGETS = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
         if self.keras:
-            self.model.fit(STATES, TARGETS, epochs = 1, verbose = 0)
+            with self._graph.as_default():
+                self.model.fit({"INPUT": STATES.reshape(-1, 1, states[0].size)},
+                               TARGETS.reshape(-1, 1, states[0].size),
+                               epochs = 1, verbose = 0,
+                               callbacks = []) # self.keras_tensorboard
         else:
             # Default to self.beta if no beta is given
             if beta == None:
@@ -343,7 +356,15 @@ class Q (Agent):
             feed_dict = {self.x: STATES, self.q_targets: TARGETS,
                          self.learn_rate: learn_rate, self.beta_ph: beta}
             # Optimize the network and return the tensorboard summary information
-            return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
+            summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
+            if self.mop and False:
+                print("******************")
+                print("PLAYER :: {}".format(self.name))
+                for i in range(len(TARGETS)):
+                    print((TARGETS[i] - self.get_Q(STATES[i])).reshape(states[0].shape))
+                    print()
+                print("******************")
+            return summary
 
     def save(self, name):
         """
@@ -358,9 +379,8 @@ class Q (Agent):
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b],
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
-                         "beta": self.beta, "deterministic": self.deterministic,
-                         "classifier": self.classifier, "training": params,
-                         "iterations": self.trainer.iteration},
+                         "beta": self.beta, "classifier": self.classifier,
+                         "training": params, "iterations": self.trainer.iteration},
                         outFile)
 
     def variable_summaries(self, var, name):
@@ -540,7 +560,7 @@ class QTrainer (BaseTrainer.Trainer):
         # Train for each epoch
         for epoch in range(epochs):
             # Calculate targets from states, actions, and rewards
-            targets = [self.agent.target(state, action, self.agent.get_Q(state), reward)
+            targets = [self.agent.target(state, action, reward)
                        for (state, action, reward) in zip(states, actions, rewards)]
             # Rotate if requested
             if rotate:

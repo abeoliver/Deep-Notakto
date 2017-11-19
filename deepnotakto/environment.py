@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 """
 Define "Observation" (dict)
 Keys:
-    "observation" - Board state
+    "observation" (nd-array) - Board state
     "reward" (float) - Reward for a given action
     "done" (bool) - Is at terminal state?
     "info" (dict) - Other environment information
@@ -29,8 +29,8 @@ class Env (object):
         if rewards == None:
             self.rewards = {
                 "illegal": -10,
-                "forced": 1,
-                "loss": -1
+                "forced": 2,
+                "loss": -2
             }
         else:
             self.rewards = rewards

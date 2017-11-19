@@ -2,7 +2,8 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 from numpy.random import normal
-from numpy import zeros
+from numpy import zeros, identity, flip
+from numpy import sum as np_sum
 
 class Agent (object):
     def __init__(self, training = {"mode": None}):
@@ -48,7 +49,7 @@ class Agent (object):
         """Adds a move of a game to a game episode"""
         self.episode.append((state, action, reward))
 
-    def save_episode(self, use_final = True, reward = None):
+    def save_episode(self, use_final = False, reward = None):
         """
         Saves an episode to the game records
         Parameters:
@@ -119,3 +120,23 @@ class Agent (object):
 
     def get_Q(self, state):
         return zeros(state.shape)
+
+    def is_over(self, board):
+        """Checks if game is over"""
+        # Rows
+        for row in board:
+            if np_sum(row) == board.shape[0]:
+                return True
+        # Columns (row in transpose of b)
+        for col in board.T:
+            if np_sum(col) == board.shape[0]:
+                return True
+        # Diagonals
+        # Top left to bottom right
+        if np_sum(board * identity(self.size)) >= self.size:
+            return True
+        # Bottom left to top right
+        if np_sum(board * flip(identity(self.size), 1)) >= self.size:
+            return True
+        # Otherwise game is not over
+        return False
