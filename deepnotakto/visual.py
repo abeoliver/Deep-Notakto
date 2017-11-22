@@ -2,12 +2,13 @@
 # Abraham Oliver, 2017
 # Deep Notakto Project
 
-import sys, pygame
+import pygame
+import sys
+
 import numpy as np
 from matplotlib.pyplot import get_cmap
-from copy import copy
-from tensorflow.python.framework.errors_impl import InvalidArgumentError
-import util
+
+import deepnotakto.util as util
 
 # Initialize Pygame
 pygame.init()
@@ -361,7 +362,6 @@ class GameWithConfidences (Visualization):
         # ---------- END GAME SET LOOP ----------
 
 if __name__ == "__main__":
-    from agents.random_agent import RandomAgent
     from environment import Env
     from agents.human import Human
     from agents.Q import Q

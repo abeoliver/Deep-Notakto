@@ -4,14 +4,15 @@
 from numpy.random import normal
 from numpy import zeros, identity, flip
 from numpy import sum as np_sum
+from collections import deque
 
 class Agent (object):
-    def __init__(self, training = {"mode": None}):
-        self.states = []
-        self.actions = []
-        self.rewards = []
+    def __init__(self, training = {"mode": None}, max_queue = 100):
+        self.states = deque(maxlen = max_queue)
+        self.actions = deque(maxlen = max_queue)
+        self.rewards = deque(maxlen = max_queue)
         self.episode = []
-        self.episode_lengths = []
+        self.max_queue = max_queue
         self.training = training
         self.architecture = "N/A"
         self.name = "agent"
@@ -41,15 +42,13 @@ class Agent (object):
 
     def new_episode(self):
         """Reset the memory of an agent for a new episode"""
-        self.states = []
-        self.actions = []
-        self.rewards = []
+        self.episode = []
 
     def add_episode(self, state, action, reward):
         """Adds a move of a game to a game episode"""
         self.episode.append((state, action, reward))
 
-    def save_episode(self, use_final = False, reward = None):
+    def save_episode(self, use_final = False):
         """
         Saves an episode to the game records
         Parameters:
@@ -67,47 +66,17 @@ class Agent (object):
             final_reward = self.episode[-1][2]
             if final_reward >= -1:
                 self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
-        # If using given reward, record that reward
-        elif reward != None:
-            self.episode = [(s, a, reward) for s, a, _ in self.episode]
         # Loop through each item in episode
         for s, a, r in self.episode:
             # Add to game record
             self.states.append(s)
             self.actions.append(a)
             self.rewards.append(r)
-        # Add the length of the episode to find episode later
-        self.episode_lengths.append(len(self.episode))
         # Train episodically (may be avoided within the function w/ training params)
-        if self.training["mode"] == "episodic":
-            self.train("episodic")
+        if self.training["mode"] in ["episodic", "replay"]:
+            self.train(self.training["mode"])
         # Clear episode
         self.episode = []
-
-    def reset_episode(self):
-        """Reset the current episode"""
-        self.episode = []
-
-    def get_last_episode(self):
-        """
-        Get most recent episode
-        Returns:
-            List of (state, action, reward) tuples
-        """
-        b = self.episode_lengths[-1]
-        return zip(self.states[-b:], self.actions[-b:], self.rewards[-b:])
-
-    def get_i_episode(self, i):
-        """
-        Get the ith episode of the game records
-        Parameters:
-            i (int) - Index of episode to fetch
-        Returns:
-            List of (state, action, reward) tuples
-        """
-        a = sum(self.episode_lengths[:i])
-        b = sum(self.episode_lengths[:i + 1])
-        return zip(self.states[a:b], self.actions[a:b], self.rewards[a:b])
 
     def save(self, **kwargs):
         """Saves an agent to a file"""

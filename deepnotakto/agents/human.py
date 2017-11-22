@@ -2,9 +2,12 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
-import numpy as np
-from agents.agent import Agent
 import sys
+
+import numpy as np
+
+from deepnotakto.agents.agent import Agent
+
 
 class Human (Agent):
     def __init__(self):

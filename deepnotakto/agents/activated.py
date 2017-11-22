@@ -4,10 +4,12 @@
 
 import numpy as np
 import tensorflow as tf
-from agents.Q import Q as BaseQ
-from util import unique_classifier
 
-class Activated (BaseQ):
+from deepnotakto.agents.Q import Q
+from deepnotakto.util import unique_classifier
+
+
+class Activated (Q):
     def __init__(self, layers, func = None, name = None, **kwargs):
         """
         Initializes an Q learning agent with activations (ABSTRACT)

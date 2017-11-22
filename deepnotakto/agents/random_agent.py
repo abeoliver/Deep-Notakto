@@ -4,7 +4,7 @@
 
 from numpy import zeros, int32, add, equal, int32
 from random import randint, choice
-from agents.agent import Agent
+from deepnotakto.agents.agent import Agent
 
 class RandomAgent (Agent):
     def __init__(self, env):

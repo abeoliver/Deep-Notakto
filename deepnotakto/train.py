@@ -4,12 +4,12 @@
 
 import os
 from time import time
-from random import choice
-import util
+
+import deepnotakto.util as util
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
+def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 				save_a2 = False, path = "", record_name = "record.txt",
 				constant = True):
 	print("Traning Agents '{}' vs '{}'".format(a1.name, a2.name))
@@ -19,8 +19,6 @@ def train_agent(env, a1, a2, rounds, round_length = 100, save_a1 = False,
 	if save_a2:
 		util.record(record_name, a2)
 	r = 0
-	a1_e = lambda x: .5
-	a2_e = lambda x: 0
 	while r < rounds or rounds < 0:
 		wins = [0, 0]
 		# Play a round, adding the wins to the count

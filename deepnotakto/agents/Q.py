@@ -2,19 +2,22 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
+import pickle
+from copy import copy
+from random import choice, shuffle
+
 import numpy as np
 import tensorflow as tf
-from random import choice, sample, shuffle
-from agents.agent import Agent
-from copy import copy, deepcopy
-import pickle, util
-import matplotlib.pyplot as plt
-import trainer as BaseTrainer
+
+import deepnotakto.util as util
+from deepnotakto.agents.agent import Agent
+from deepnotakto.trainer import Trainer
+
 
 class Q (Agent):
     def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 training = {"mode": "episodic"}, keras = False, **kwargs):
+                 training = {"mode": "replay"}, keras = False, **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -31,6 +34,8 @@ class Q (Agent):
         # INITIALIZE
         # Parent initializer
         super(Q, self).__init__(training)
+        # Debug, unprofessional variable
+        self.mop = False
         self.layers = layers
         self.keras = keras
         self.architecture = layers
@@ -509,7 +514,7 @@ class Q (Agent):
         """
         return Dual(self)
 
-class QTrainer (BaseTrainer.Trainer):
+class QTrainer (Trainer):
     def default_params(self):
         return {
             "type": "episodic",
@@ -517,7 +522,8 @@ class QTrainer (BaseTrainer.Trainer):
             "rotate": False,
             "epsilon_func": None,
             "epochs": 1,
-            "batch_size": 1
+            "batch_size": 1,
+            "replay_size": 20
         }
 
     def online(self, state, action, reward, learn_rate = None, **kwargs):

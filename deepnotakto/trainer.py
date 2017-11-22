@@ -4,8 +4,8 @@
 
 import numpy as np
 import tensorflow as tf
-from random import shuffle
-from util import rotate as rotate_func
+from random import shuffle, sample
+from deepnotakto.util import rotate as rotate_func
 
 class Trainer (object):
     def __init__(self, agent, training = None, path = None, tensorboard_interval = 0,
@@ -38,7 +38,7 @@ class Trainer (object):
         self.params[name] = value
 
     def default_params(self):
-        return {}
+        return {"replay_size": 1}
 
     def training_params(self, training = None):
         defaults = dict(self.default_params())
@@ -52,10 +52,11 @@ class Trainer (object):
 
     def train(self, mode = None, source_agent = None, **kwargs):
         """Trains the model with the set training parameters"""
-        options = {"online": self._online_mode, "episodic": self._episodic_mode}
+        options = {"online": self._online_mode, "episodic": self._episodic_mode,
+                   "replay": self._replay_mode}
         if mode == None:
             options[self.params["type"]](source_agent, **kwargs)
-        elif mode in ["online", "episodic"]:
+        elif mode in options:
             options[mode](source_agent, **kwargs)
 
     def _online_mode(self, source_agent = None, **kwargs):
@@ -79,6 +80,20 @@ class Trainer (object):
             rewards.append(r)
         # Run trainer
         self.offline(states, actions, rewards, **kwargs)
+
+    def _replay_mode(self, source_agent = None, **kwargs):
+        """Experience replay training mode"""
+        if source_agent == None:
+            source_agent = self.agent
+        size = len(source_agent.states)
+        if size > self.params["replay_size"]:
+            indexes = sample(range(size), self.params["replay_size"])
+        else:
+            indexes = range(size)
+        self.offline([source_agent.states[i] for i in indexes],
+                     [source_agent.actions[i] for i in indexes],
+                     [source_agent.rewards[i] for i in indexes],
+                     **kwargs)
 
     def online(self, state, action, reward, **kwargs):
         """Gets a callable function for online training"""
