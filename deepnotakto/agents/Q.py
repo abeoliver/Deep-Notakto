@@ -15,25 +15,27 @@ from deepnotakto.trainer import Trainer
 
 
 class Q (Agent):
-    def __init__(self, layers, gamma = .8, epsilon = 0.0, beta = None, name = None,
+    def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 training = {"mode": "replay"}, keras = False, **kwargs):
+                 training = {"mode": "episodic"}, keras = False, max_queue = 100,
+                 softmax_explore = False ,**kwargs):
         """
         Initializes an Q learning agent
         Parameters:
             layers (int[]) - Layer architecture for the network
             gamma (float [0, 1]) - Q-Learning hyperparameter
-            epsilon (float [0, 1]) - Epsilon for e-greedy exploration
             beta (float) - Regularization hyperparameter (if None, regularization
                             is not implemented)
             name (string) - Name of the agent and episodes model
             initialize (bool) - Initialize the model randomly or not
             training (dict) - Parameters for training
+            max_queue (int) - Maximum size of the replay queue
+            softmax_explore (bool) - Use softmax exploration (overrides epsilon)
             KWARGS are passed to the model initializer
         """
         # INITIALIZE
         # Parent initializer
-        super(Q, self).__init__(training)
+        super(Q, self).__init__(training, max_queue = max_queue)
         # Debug, unprofessional variable
         self.mop = False
         self.layers = layers
@@ -43,7 +45,7 @@ class Q (Agent):
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
-        self.epsilon = epsilon
+        self.softmax_explore = softmax_explore
         # If classifier is not set, get a new classifier
         if classifier == None:
             self.classifier = util.unique_classifier()
@@ -289,6 +291,10 @@ class Q (Agent):
                 print("Delta         -- {}".format(Q[np.argmax(action)] - c))
         return np.reshape(Q, new_state.shape)
 
+    def softmax(self, x):
+        """Compute softmax values for each sets of scores in x."""
+        return np.exp(x) / np.sum(np.exp(x), axis = 0)
+
     def get_action(self, state):
         """
         Creates an action vector for a given state
@@ -296,19 +302,26 @@ class Q (Agent):
             (N, M) array - An action vector
         """
         # Use e-greedy exploration
-        if np.random.rand(1) < self.epsilon:
-            action = choice(self.action_space(state))
+        if self.softmax_explore:
+            temp = 1
+            # Get the probabilities for each action
+            probs = self.softmax(np.reshape(self.get_Q(state), -1) / temp)
+            # Get the randomly chosen action
+            action = np.zeros(state.shape)
+            action[np.random.choice(state.size, p = probs)] = 1
+            return action
         else:
-            # Get action Q-vector
-            Q = self.get_Q(state)
-            # Find the best aciton (largest Q)
-            max_index = np.argmax(Q)
-            # Make an action vector
-            action = np.zeros(Q.size, dtype = np.int32)
-            action[max_index] = 1
-            action = np.reshape(action, state.shape)
-        # Return the action
-        return action
+            if np.random.rand(1) < self.epsilon:
+                return choice(self.action_space(state))
+            else:
+                # Get action Q-vector
+                Q = self.get_Q(state)
+                # Find the best aciton (largest Q)
+                max_index = np.argmax(Q)
+                # Make an action vector
+                action = np.zeros(Q.size, dtype = np.int32)
+                action[max_index] = 1
+                return np.reshape(action, state.shape)
 
     def get_Q(self, state):
         """
@@ -377,7 +390,7 @@ class Q (Agent):
         Parameters:
             name (string) - File name for save file
         """
-        # Remove epsilon function from the parameters
+        # Remove epsilon function from the parameters for pickle
         params = copy(self.trainer.params)
         params["epsilon_func"] = None
         with open(name, "wb") as outFile:
@@ -514,6 +527,26 @@ class Q (Agent):
         """
         return Dual(self)
 
+    @property
+    def params(self):
+        return self.trainer.params
+
+    @params.setter
+    def params(self, value):
+        self.trainer.training_params(value)
+
+    @property
+    def epsilon(self):
+        return self.trainer.get_epsilon()
+
+    @property
+    def iteration(self):
+        return self.trainer.iteration
+
+    @iteration.setter
+    def iteration(self, value):
+        self.trainer.iteration = value
+
 class QTrainer (Trainer):
     def default_params(self):
         return {
@@ -573,8 +606,6 @@ class QTrainer (Trainer):
                 states, targets = self.get_rotations(states, targets)
             # Separate into batches and train
             self.batch(states, targets, batch_size, learn_rate)
-        # Change epsilon for e-greedy
-        self.change_epsilon()
 
     def batch(self, states, targets, batch_size, learn_rate = None):
         """
@@ -609,10 +640,11 @@ class QTrainer (Trainer):
         # Increase iteration counter
         self.iteration += 1
 
-    def change_epsilon(self):
-        """Changes the epsilon for e-greedy exploration as a function of iteration"""
-        if self.params["epsilon_func"] != None:
-            self.agent.epsilon = self.params["epsilon_func"](self.iteration)
+    def get_epsilon(self):
+        if self.params["epsilon_func"] == None:
+            return 0
+        else:
+            return self.params["epsilon_func"](self.iteration)
 
 class Dual (Agent):
     def __init__(self, host):

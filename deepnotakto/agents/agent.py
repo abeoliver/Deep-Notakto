@@ -16,6 +16,12 @@ class Agent (object):
         self.training = training
         self.architecture = "N/A"
         self.name = "agent"
+
+    def clear(self):
+        self.states = deque(maxlen = self.max_queue)
+        self.actions = deque(maxlen = self.max_queue)
+        self.rewards = deque(maxlen = self.max_queue)
+        self.epsiode = []
     
     def act(self, env):
         """
@@ -48,7 +54,7 @@ class Agent (object):
         """Adds a move of a game to a game episode"""
         self.episode.append((state, action, reward))
 
-    def save_episode(self, use_final = False):
+    def save_episode(self, use_final = True):
         """
         Saves an episode to the game records
         Parameters:
@@ -64,7 +70,8 @@ class Agent (object):
         if use_final:
             # Fetch final reward
             final_reward = self.episode[-1][2]
-            if final_reward >= -1:
+            # TODO : Make this automatic
+            if final_reward != -10:
                 self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
         # Loop through each item in episode
         for s, a, r in self.episode:

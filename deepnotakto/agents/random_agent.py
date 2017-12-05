@@ -15,6 +15,7 @@ class RandomAgent (Agent):
     def get_action(self, state):
         possible = self.env.action_space(state)
         player = 2 if self.env.turn % 2 == 0 else 1
+        opponent = 2 if player == 1 else 1
         not_loser = []
         move = zeros(state.shape, int32)
         # Choose a winner and identify non-losers
@@ -23,7 +24,7 @@ class RandomAgent (Agent):
             new_state = add(m, state)
             # Discard if it is a loss
             winner = self.env.is_over(new_state)
-            if winner != 0:
+            if winner == opponent:
                 continue
             # If forced loss on opponent, choose move
             if self.env.forced(new_state):

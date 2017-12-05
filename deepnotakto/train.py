@@ -29,7 +29,9 @@ def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 				# Winner is opposite of agent number
 				wins[0 if play(env, a2, a1) == 2 else 1] += 1
 		# Console information
-		console_print(start, wins, r, rounds, round_length)
+		e_a1 = a1.epsilon if save_a1 else 0
+		e_a2 = a2.epsilon if save_a2 else 0
+		console_print(start, wins, r, rounds, round_length, e_a1, e_a2)
 		if save_a1:
 			util.update(record_name, a1, "{} / {}".format(wins[0], round_length))
 			a1.save("{}{}.npz".format(path, a1.name))
@@ -39,11 +41,11 @@ def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 		# Incrememnt round counter
 		r += 1
 
-def console_print(start, wins, round, rounds, round_length):
+def console_print(start, wins, round, rounds, round_length, epsilon_a1, epsilon_a2):
 	pct = int((float(wins[0]) / round_length) * 100)
 	print(util.elapsed_time(start))
-	print("Score: {}% vs {}% out of {} games [{} / {} rounds played]\n".format(
-		pct, 100 - pct, round_length, round + 1, rounds
+	print("Score: {}% vs {}% out of {} games [{} / {} rounds played, ({:.0f}%, {:.0f}%) exploration]\n".format(
+		pct, 100 - pct, round_length, round + 1, rounds, epsilon_a1 * 100, epsilon_a2 * 100
 	))
 
 def play(env, a1, a2):
@@ -67,5 +69,22 @@ def play(env, a1, a2):
 	# Return winner
 	return env.turn % 2 + 1
 
-def ef(i, a = 1, b = 1, c = 0):
-	return max(0, min(1, (float(a) / pow(i, b)) + c))
+def ef(a, b, c = 1):
+	"""
+	Epsilon change function
+	Parameters:
+	     a (int) - Number of iterations for 100%
+	     b (int) - Number of iterations for 50%
+	     c (float) - Steepness modifier
+	"""
+	if a < 0:
+		raise ValueError("Argument 'a' (val {}) cannot be less than or equal to 0".format(a))
+	if b < 0:
+		raise ValueError("Argument 'b' (val {}) cannot be less than or equal to 0".format(b))
+	if a >= b:
+		raise ValueError("Argument 'a' (val {}) cannot be greater that or equal to argument 'b' (val {})".format(a, b))
+	if c == 0:
+		raise ValueError("Argument 'c' (val {}) cannot be 0".format(c))
+	alpha, beta= pow(a, c), pow(b, c)
+	q = lambda x: ((alpha * beta) + pow(x, c) * (beta - 2 * alpha)) / (2 * pow(x, c) * (beta - alpha))
+	return lambda x: max(0, min(1, q(x))) if x != 0 else 0
