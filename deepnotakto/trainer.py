@@ -8,12 +8,13 @@ from random import shuffle, sample
 from deepnotakto.util import rotate as rotate_func
 
 class Trainer (object):
-    def __init__(self, agent, training = None, path = None, tensorboard_interval = 0,
+    def __init__(self, agent, params = None, path = None, tensorboard_interval = 0,
                  iterations = 0):
         """
         Initializes a Trainer object
         Parameter:
             agent (Agent) - Agent to train
+            params (dict) - training parameters
             path (string) - File path to save Tensorboard info
                                 (default "/tensorboard")
             tensorboard_interval (int) - Number of iterations between
@@ -23,7 +24,7 @@ class Trainer (object):
         """
         self.agent = agent
         self.iteration = iterations
-        self.training_params(training)
+        self.training_params(params)
         # If recording, setup tensorboard functions
         if tensorboard_interval >= 1:
             if path == None:
@@ -40,12 +41,12 @@ class Trainer (object):
     def default_params(self):
         return {"replay_size": 1}
 
-    def training_params(self, training = None):
+    def training_params(self, params = None):
         defaults = dict(self.default_params())
-        if training == None:
+        if params == None:
             self.params = defaults
         else:
-            self.params = training
+            self.params = params
             for key in defaults:
                 if not key in self.params:
                     self.params[key] = defaults[key]

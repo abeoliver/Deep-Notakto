@@ -17,8 +17,8 @@ from deepnotakto.trainer import Trainer
 class Q (Agent):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 training = {"mode": "episodic"}, keras = False, max_queue = 100,
-                 softmax_explore = False ,**kwargs):
+                 params = {"mode": "episodic"}, keras = False, max_queue = 100,
+                 epsilon_func = None, temp_func = None, **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -28,24 +28,40 @@ class Q (Agent):
                             is not implemented)
             name (string) - Name of the agent and episodes model
             initialize (bool) - Initialize the model randomly or not
-            training (dict) - Parameters for training
+            params (dict) - Parameters for training
             max_queue (int) - Maximum size of the replay queue
-            softmax_explore (bool) - Use softmax exploration (overrides epsilon)
+            epsilon_func ([int -> float] OR float OR None) - Epsilon schedule
+            temp_func ([int -> float] OR float OR None) - Temperature parameter for softmax
+                            exploration. Passing a function sets the schedule and passing a
+                            float sets a constant schedule.
             KWARGS are passed to the model initializer
         """
         # INITIALIZE
         # Parent initializer
-        super(Q, self).__init__(training, max_queue = max_queue)
-        # Debug, unprofessional variable
-        self.mop = False
+        super(Q, self).__init__(params, max_queue = max_queue)
         self.layers = layers
         self.keras = keras
         self.architecture = layers
-        self.size = np.int32(np.sqrt(layers[0]))
+        self.size = int(np.sqrt(layers[0]))
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
-        self.softmax_explore = softmax_explore
+        if epsilon_func == None:
+            self._epsilon_func = epsilon_func
+        elif type(epsilon_func) in [float, int]:
+            self._epsilon_func = lambda x: epsilon_func
+        elif type(epsilon_func) == type(lambda x: None):
+            self._epsilon_func = epsilon_func
+        else:
+            raise ValueError("This value is not permitted as an epsilon schedule")
+        if temp_func == None:
+            self._temp_func = temp_func
+        elif type(temp_func) in [float, int]:
+            self._temp_func = lambda x: temp_func
+        elif type(temp_func) == type(lambda x: None):
+            self._temp_func = temp_func
+        else:
+            raise ValueError("This value is not permitted as a temperature schedule")
         # If classifier is not set, get a new classifier
         if classifier == None:
             self.classifier = util.unique_classifier()
@@ -59,15 +75,17 @@ class Q (Agent):
         # Initialize if desired
         self.initialized = False
         if initialize:
-            self.initialize(training = training, iterations = iterations, **kwargs)
+            self.initialize(params = params, iterations = iterations, **kwargs)
 
     def initialize(self, weights = None, biases = None, force = False,
-                   training = None, **kwargs):
+                   params = None, **kwargs):
         """
         Initialize the model
         Parameters:
             weights (List of (N, M) arrays with variable size) - Initial weights
             biases (List of (1, N) arrays with variable size) - Initial biases
+            force (bool) - Initialize, even if already initialized
+            params (dict) - Training parameters
             KWARGS passed to trainer initializer
         """
         if not self.initialized or force:
@@ -79,7 +97,7 @@ class Q (Agent):
             # Initialize training variables like the loss and the optimizer
             self._init_training_vars()
             # Initialize trainer (passing the agent as a parameter)
-            self.trainer = QTrainer(self, training = training, **kwargs)
+            self.trainer = QTrainer(self, params = params, **kwargs)
             self.initialized = True
 
     def init_model(self, weights = None, biases = None):
@@ -252,7 +270,7 @@ class Q (Agent):
         new_state = np.add(state, action)
         # Get current Q values
         Q = np.reshape(np.copy(self.get_Q(state)), -1)
-        if self.mop:
+        if False:
             print("-------------------")
             print("PLAYER :: {}".format(self.name))
             print("State   Action")
@@ -285,7 +303,7 @@ class Q (Agent):
             maxQ = np.max(new_Q_max)
             # Return a new Q vector updated by the Bellman equation
             Q[np.argmax(action)] = reward + self.gamma * maxQ
-            if self.mop:
+            if False:
                 print("Future        -- {}".format(maxQ))
                 print("Bellman       -- {}".format(Q[np.argmax(action)]))
                 print("Delta         -- {}".format(Q[np.argmax(action)] - c))
@@ -301,25 +319,26 @@ class Q (Agent):
         Returns:
             (N, M) array - An action vector
         """
-        # Use e-greedy exploration
-        if self.softmax_explore:
-            temp = 1
-            # Get the probabilities for each action
-            probs = self.softmax(np.reshape(self.get_Q(state), -1) / temp)
+        # Get Q-values
+        qs = self.get_Q(state)
+        # Use softmax exploration
+        # Get the probabilities for each action
+        probs = self.softmax(np.reshape(qs, -1) / self.temperature)
+        if self.temperature > .01 and not np.isnan(probs).any():
             # Get the randomly chosen action
-            action = np.zeros(state.shape)
+            action = np.zeros(state.size)
             action[np.random.choice(state.size, p = probs)] = 1
-            return action
+            return np.reshape(action, state.shape)
         else:
+            # Use e-greedy exploration
             if np.random.rand(1) < self.epsilon:
                 return choice(self.action_space(state))
+            # Use max-value selection
             else:
-                # Get action Q-vector
-                Q = self.get_Q(state)
                 # Find the best aciton (largest Q)
-                max_index = np.argmax(Q)
+                max_index = np.argmax(qs)
                 # Make an action vector
-                action = np.zeros(Q.size, dtype = np.int32)
+                action = np.zeros(qs.size, dtype = np.int32)
                 action[max_index] = 1
                 return np.reshape(action, state.shape)
 
@@ -375,7 +394,7 @@ class Q (Agent):
                          self.learn_rate: learn_rate, self.beta_ph: beta}
             # Optimize the network and return the tensorboard summary information
             summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
-            if self.mop and False:
+            if False:
                 print("******************")
                 print("PLAYER :: {}".format(self.name))
                 for i in range(len(TARGETS)):
@@ -391,14 +410,12 @@ class Q (Agent):
             name (string) - File name for save file
         """
         # Remove epsilon function from the parameters for pickle
-        params = copy(self.trainer.params)
-        params["epsilon_func"] = None
         with open(name, "wb") as outFile:
             pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
                          "biases": [b.eval(session = self.session) for b in self.b],
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
-                         "training": params, "iterations": self.trainer.iteration},
+                         "params": self.params, "iterations": self.trainer.iteration},
                         outFile)
 
     def variable_summaries(self, var, name):
@@ -537,7 +554,20 @@ class Q (Agent):
 
     @property
     def epsilon(self):
-        return self.trainer.get_epsilon()
+        if self._epsilon_func == None:
+            return 0
+        return self._epsilon_func(self.iteration)
+
+    @epsilon.setter
+    def epsilon(self, epsilon_func):
+        if epsilon_func == None:
+            self._epsilon_func = epsilon_func
+        elif type(epsilon_func) in [float, int]:
+            self._epsilon_func = lambda x: epsilon_func
+        elif type(epsilon_func) == type(lambda x: None):
+            self._epsilon_func = epsilon_func
+        else:
+            raise ValueError("This value is not permitted as an epsilon schedule")
 
     @property
     def iteration(self):
@@ -547,13 +577,29 @@ class Q (Agent):
     def iteration(self, value):
         self.trainer.iteration = value
 
+    @property
+    def temperature(self):
+        if self._temp_func == None:
+            return 0
+        return self._temp_func(self.iteration)
+
+    @temperature.setter
+    def temperature(self, temp_func):
+        if temp_func == None:
+            self._temp_func = temp_func
+        elif type(temp_func) in [float, int]:
+            self._temp_func = lambda x: temp_func
+        elif type(temp_func) == type(lambda x: None):
+            self._temp_func = temp_func
+        else:
+            raise ValueError("This value is not permitted as a temperature schedule")
+
 class QTrainer (Trainer):
     def default_params(self):
         return {
             "type": "episodic",
             "learn_rate": 1e-4,
             "rotate": False,
-            "epsilon_func": None,
             "epochs": 1,
             "batch_size": 1,
             "replay_size": 20
@@ -639,12 +685,6 @@ class QTrainer (Trainer):
             self.writer.add_summary(summary, self.iteration)
         # Increase iteration counter
         self.iteration += 1
-
-    def get_epsilon(self):
-        if self.params["epsilon_func"] == None:
-            return 0
-        else:
-            return self.params["epsilon_func"](self.iteration)
 
 class Dual (Agent):
     def __init__(self, host):

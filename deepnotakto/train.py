@@ -29,9 +29,7 @@ def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 				# Winner is opposite of agent number
 				wins[0 if play(env, a2, a1) == 2 else 1] += 1
 		# Console information
-		e_a1 = a1.epsilon if save_a1 else 0
-		e_a2 = a2.epsilon if save_a2 else 0
-		console_print(start, wins, r, rounds, round_length, e_a1, e_a2)
+		console_print(start, wins, r, rounds, round_length)
 		if save_a1:
 			util.update(record_name, a1, "{} / {}".format(wins[0], round_length))
 			a1.save("{}{}.npz".format(path, a1.name))
@@ -41,11 +39,11 @@ def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 		# Incrememnt round counter
 		r += 1
 
-def console_print(start, wins, round, rounds, round_length, epsilon_a1, epsilon_a2):
+def console_print(start, wins, round, rounds, round_length):
 	pct = int((float(wins[0]) / round_length) * 100)
 	print(util.elapsed_time(start))
-	print("Score: {}% vs {}% out of {} games [{} / {} rounds played, ({:.0f}%, {:.0f}%) exploration]\n".format(
-		pct, 100 - pct, round_length, round + 1, rounds, epsilon_a1 * 100, epsilon_a2 * 100
+	print("Score: {}% vs {}% out of {} games [{} / {} rounds played]\n".format(
+		pct, 100 - pct, round_length, round + 1, rounds
 	))
 
 def play(env, a1, a2):
