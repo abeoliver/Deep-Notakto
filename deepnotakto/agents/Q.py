@@ -46,6 +46,10 @@ class Q (Agent):
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
+        if epsilon_func == None and temp_func == None:
+            self.deterministic = True
+        else:
+            self.deterministic = False
         if epsilon_func == None:
             self._epsilon_func = epsilon_func
         elif type(epsilon_func) in [float, int]:
@@ -321,26 +325,26 @@ class Q (Agent):
         """
         # Get Q-values
         qs = self.get_Q(state)
-        # Use softmax exploration
-        # Get the probabilities for each action
-        probs = self.softmax(np.reshape(qs, -1) / self.temperature)
-        if self.temperature > .01 and not np.isnan(probs).any():
-            # Get the randomly chosen action
-            action = np.zeros(state.size)
-            action[np.random.choice(state.size, p = probs)] = 1
-            return np.reshape(action, state.shape)
-        else:
-            # Use e-greedy exploration
-            if np.random.rand(1) < self.epsilon:
-                return choice(self.action_space(state))
-            # Use max-value selection
-            else:
-                # Find the best aciton (largest Q)
-                max_index = np.argmax(qs)
-                # Make an action vector
-                action = np.zeros(qs.size, dtype = np.int32)
-                action[max_index] = 1
+        # Use softmax selection if requested
+        if self.temperature > .01 and not self.deterministic:
+            probs = self.softmax(np.reshape(qs, -1) / self.temperature)
+            if not np.isnan(probs).any():
+                # Get the randomly chosen action
+                action = np.zeros(state.size)
+                action[np.random.choice(state.size, p = probs)] = 1
                 return np.reshape(action, state.shape)
+        # If softmax not requested or temperature too low
+        # Use e-greedy exploration
+        if np.random.rand(1) < self.epsilon and not self.deterministic:
+            return choice(self.action_space(state))
+        # Use max-value selection
+        else:
+            # Find the best aciton (largest Q)
+            max_index = np.argmax(qs)
+            # Make an action vector
+            action = np.zeros(qs.size, dtype=np.int32)
+            action[max_index] = 1
+            return np.reshape(action, state.shape)
 
     def get_Q(self, state):
         """
