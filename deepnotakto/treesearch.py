@@ -51,7 +51,7 @@ class Node (object):
             Gets a random node to move into
     """
     def __init__(self, state, parent = None, edge = None, visits = 0,
-                 wins = 0):
+                 wins = 0, remove_unvisited_losses = False):
         """
         Creates a Node objedct
         Parameters:
@@ -59,6 +59,7 @@ class Node (object):
             parent (State) - State before action was taken
             edge (Edge) - Action from parent -> state
             children (Node[]) - Visited children nodes
+            remove_unvisited_losses (bool) - Should losses be included in unvisited nodes
         """
         self.state = copy(state)
         self.parent = parent
@@ -67,7 +68,7 @@ class Node (object):
         self.visits = visits
         self.wins = wins
         self.player = self.get_player()
-        self.unvisited = self.action_space()
+        self.unvisited = self.action_space(remove_losses = remove_unvisited_losses)
         self.winner = self.get_winner()
 
     def __repr__(self):
@@ -101,7 +102,7 @@ class Node (object):
     def get_player(self):
         return 0
 
-    def action_space(self, state = None):
+    def action_space(self, state = None, remove_losses = False):
         return []
 
     def get_moves(self):
@@ -131,7 +132,6 @@ class Node (object):
             self.children.append(new_node)
             return new_node
         else:
-            print(self)
             raise(IndexError("Unvisited list is empty"))
 
     def update(self, winner):
@@ -343,33 +343,20 @@ def search(root_node = None, iterations = 100, size = 0):
             raise(Exception("Size must be greater than 1"))
     # Run search 'iterations' times)
     for i in range(iterations):
-        #print(len(root_node.children))
         # Start at the root node
         node = root_node
         # Iteration end signal
-        # end = False
 
         # Selection phase (find a non-terminal / non-expanded node)
         # Traverse until an un-expanded node is found
         while node.unvisited == [] and node.children != []:
             # Move to the best child
             node = node.UCB_select()
-            # If this is a terminal node, update and end
-            # if node.winner != 0:
-                # end = True
-                # node.update(node.winner)
-                # break
-        # End this iteration
-        # if end: continue
+
         # Expansion Phase (choose an unvisited node to explore)
         # If non-terminal, choose an unvisited node
         if node.unvisited != []:
             node = node.visit_unvisited()
-        # If terminal, update
-        #elif node.winner != 0:
-            #end = True
-            #node.update(node.winner)
-            #continue
 
         # Rollout phase (run a random game from this node)
         while True:
@@ -393,83 +380,7 @@ def self_play(root = None, size = 0, iterations = 1, max_games = 1):
     else:
         game = root
     for _ in range(max_games):
-        while game.winner == 0:
+        while game.winner == 0: # and not game.forced():
             move = search(game, iterations = iterations).best()
             game = NotaktoNode(game.play_move(move), game, move)
     return game
-
-def play(env, root, opponent, root_first = True, iterations = 1, max_games = 1):
-    for _ in range(max_games):
-        wins = [0, 0]
-        player = root
-        while True:
-            if (root_first and env.turn % 2 == 0) or (not root_first and env.turn % 2 != 0):
-                move = player.best()
-                observation = env.act(move_to_vec(move, player.state.shape[0]))
-                if observation["done"] != 0:
-                    wins[observation["done"] - 1] += 1
-                    break
-                # player = player.get_child_edge(move)
-                print("------------")
-                print(player)
-                print("============")
-                iso_child = player.isomorphic_child(observation["observation"])
-                if iso_child == False:
-                    # Translate played move to an unvisited move
-                    move = player.isomorphic_move(target = player.state,
-                                                  move = np.argmax(observation["action"]),
-                                                  source = observation["observation"])
-                    if move not in player.unvisited:
-                        random_node = player.random_move()
-                        if random_node == False:
-                            random_node = player.random_move(False, True)
-                            if random_node == False:
-                                random_node = player.random_move(False, False)
-                                if random_node == False:
-                                    raise(Exception("No valid moves for player to play"))
-                                player = random_node
-                            else:
-                                player = random_node
-                        else:
-                            player = random_node
-                    else:
-                        player = player.visit_unvisited(move)
-                else:
-                    player = iso_child
-                print(player)
-                print("^^^^^^^^^^^^")
-                env.display()
-            else:
-                # Opponent plays
-                observation = opponent.act(env)
-                if observation["done"] != 0:
-                    wins[observation["done"] - 1] += 1
-                    break
-                # Traverse game tree with new move
-                env.display()
-                iso_child = player.isomorphic_child(observation["observation"])
-                # print("ISO Child")
-                # print(iso_child)
-                if iso_child == False:
-                    # Translate played move to an unvisited move
-                    move = player.isomorphic_move(target = player.state,
-                                                  move = np.argmax(observation["action"]),
-                                                  source = observation["observation"])
-                    if move not in player.unvisited:
-                        random_node = player.random_move()
-                        if random_node == False:
-                            random_node = player.random_move(False, True)
-                            if random_node == False:
-                                random_node = player.random_move(False, False)
-                                if random_node == False:
-                                    raise(Exception("No valid moves for player to play"))
-                                player = random_node
-                            else:
-                                player = random_node
-                        else:
-                            player = random_node
-                    else:
-                        player = player.visit_unvisited(move)
-                else:
-                    player = iso_child
-    return [root, wins]
