@@ -23,7 +23,7 @@ class RandomAgent (Agent):
             # Make move temporarily
             new_state = add(m, state)
             # Discard if it is a loss
-            winner = self.env.is_over(new_state)
+            winner = self.env.winner(new_state)
             if winner == opponent:
                 continue
             # If forced loss on opponent, choose move

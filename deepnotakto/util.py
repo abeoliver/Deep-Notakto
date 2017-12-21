@@ -21,7 +21,7 @@ def load_set(name):
 
 def rotate(x):
     """Rotates an array counter-clockwise"""
-    n = np.zeros(x.shape)
+    n = np.zeros(x.shape, x.dtype)
     for i in range(x.shape[0]):
         n[:, i] = x[i][::-1]
     return n
@@ -132,3 +132,9 @@ def load_agent(filename, CLASS):
     with open(filename, "rb") as f:
         loaded = pickle.load(f)
         return CLASS(**loaded)
+
+def array_in_list(ar, l):
+    for i in l:
+        if np.array_equal(ar, i):
+            return True
+    return False

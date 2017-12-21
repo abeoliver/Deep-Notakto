@@ -56,8 +56,6 @@ def play(env, a1, a2):
 		player = [a1, a2][env.turn % 2]
 		# Play
 		observation = player.act(env)
-		# Update turn counter
-		env.turn += 1
 		# Check for illegal move or a win
 		if observation["info"]["illegal"] or observation["done"]:
 			break

@@ -59,7 +59,7 @@ class Env (object):
             self._illegal = True
             return self.rewards["illegal"]
         # Rewards based on winner
-        winner = self.is_over(new_board)
+        winner = self.winner(new_board)
         if winner == 0:
             # Positive reward for forcing a loss
             if self.forced(new_board):
@@ -84,21 +84,24 @@ class Env (object):
         # Calculate move reward
         reward = self.reward(action)
         # Calculate move effect
-        move = np.add(self.board, action)
+        moved = np.add(self.board, action)
         # Play the move if the move isn't legal
-        if np.max(move) > 1:
+        if np.max(moved) > 1:
             illegal = True
         else:
-            self.board = move
+            self.board = moved
             illegal = False
+            # Update turn counter
+            self.turn += 1
         return {
             "observation": self.board,
             "reward": reward,
-            "done": self.is_over(),
+            "done": self.winner(),
+            "action": action,
             "info": {"illegal": illegal}
         }
     
-    def is_over(self, board = None):
+    def winner(self, board = None):
         """Checks if game is over"""
         if type(board) == type(None):
             board = self.board
@@ -135,7 +138,7 @@ class Env (object):
         remaining = self.action_space(b)
         # If all are losses, a loss is forced
         for r in remaining:
-            if self.is_over(np.add(b, r)) == 0:
+            if self.winner(np.add(b, r)) == 0:
                 return False
         return True
     

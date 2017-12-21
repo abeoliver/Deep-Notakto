@@ -309,7 +309,7 @@ class GameWithConfidences (Visualization):
                     if done:
                         break
                     # Check for ending
-                    done = False if self.env.is_over() == 0 else True
+                    done = False if self.env.winner() == 0 else True
                     # If over, end game
                     if done: break
                     # If not over, advance to next move automatically
@@ -337,7 +337,7 @@ class GameWithConfidences (Visualization):
                         done = True
                         break
                     # Check for a win
-                    done = False if self.env.is_over() == 0 else True
+                    done = False if self.env.winner() == 0 else True
                 # ---------- END COMPUTER MOVE ----------
             # ---------- END MAIN GAME ----------
             # End game
@@ -345,7 +345,7 @@ class GameWithConfidences (Visualization):
             self.a2.save_episode()
             # If individual game is over
             if banner != "Player attempted illegal move":
-                banner = "PLAYER {} WINS".format(self.env.is_over())
+                banner = "PLAYER {} WINS".format(self.env.winner())
             # ---------- FINAL SCREEN ----------
             board = self.env.observe()
             while True:

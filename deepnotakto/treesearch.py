@@ -7,6 +7,10 @@
 from copy import copy
 from random import choice
 import numpy as np
+from pickle import dump as pickle_dump
+from pickle import load as pickle_load
+from deepnotakto.util import rotate, array_in_list
+from deepnotakto.environment import Env
 
 class Node (object):
     """
@@ -46,7 +50,8 @@ class Node (object):
         random_move : None -> Node
             Gets a random node to move into
     """
-    def __init__(self, state, parent, edge):
+    def __init__(self, state, parent = None, edge = None, visits = 0,
+                 wins = 0):
         """
         Creates a Node objedct
         Parameters:
@@ -59,27 +64,48 @@ class Node (object):
         self.parent = parent
         self.edge = edge
         self.children = []
-        self.visits = 0
-        self.wins = 0
+        self.visits = visits
+        self.wins = wins
         self.player = self.get_player()
         self.unvisited = self.action_space()
         self.winner = self.get_winner()
 
     def __repr__(self):
-        return "Node" \
+        if type(self.parent) == type(None):
+            return "ROOT NODE at {} (P1 : {} wins)".format(self.visits, self.visits - self.wins)
+        return "Node (Player {}, Winner {})" \
                "\nWins : {} and Visits : {}" \
-               "\nState:  {}]".format(str(self.wins), str(self.visits), str(self.state).replace("\n", "\n\t"))
+               "\nState:  {}]".format(
+            str(self.player), str(self.winner), str(self.wins), str(self.visits),
+            str(self.state).replace("\n", "\n\t")
+        )
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __getitem__(self, key):
+        if type(key) != int:
+            raise(KeyError("Key is not an integer"))
+        elif abs(key) > len(self.children):
+            raise(KeyError("Index out of range"))
+        return self.children[key]
 
     def display_children(self):
         for i in self.children:
             print(i)
             print()
 
+    def display(self):
+        self.display_children()
+
     def get_player(self):
         return 0
 
     def action_space(self, state = None):
         return []
+
+    def get_moves(self):
+        return self.action_space()
 
     def random_move(self):
         return None
@@ -92,18 +118,20 @@ class Node (object):
     def get_winner(self, state = None):
         return 0
 
-    def visit_unvisited(self, node_type = Node):
+    def visit_unvisited(self, move = None):
         if len(self.unvisited) > 0:
             # Randomly choose a new move
-            move = choice(self.unvisited)
+            if move == None:
+                move = choice(self.unvisited)
             # Remove move from untried moved
             self.unvisited.remove(move)
             # Create a new node for this child
-            new_node = node_type(self.play_move(move), self, move)
+            new_node = type(self)(self.play_move(move), self, move)
             # Add new node to children
             self.children.append(new_node)
             return new_node
         else:
+            print(self)
             raise(IndexError("Unvisited list is empty"))
 
     def update(self, winner):
@@ -114,25 +142,72 @@ class Node (object):
         if type(self.parent) != type(None):
             self.parent.update(winner)
 
+    def best(self):
+        if self.winner != 0:
+            raise(Exception("Cannot select a child / move from a terminal node"))
+        if  self.children == []:
+            return self.visit_unvisited().edge
+            # return choice(self.get_moves())
+        return max(self.children, key = lambda c: c.visits).edge
+
     def UCB_select(self):
         """ Select the next child """
-        return sorted(self.children, key = lambda c: c.wins / c.visits + np.sqrt(2 * np.log(self.visits) / c.visits))[-1]
+        return max(self.children, key = lambda c: c.wins / c.visits + np.sqrt(2 * np.log(self.visits) / c.visits))
+
+    def save(self, filename):
+        with open(filename, "wb") as outFile:
+            pickle_dump(self, outFile)
+
+    def size(self):
+        return len(self.children) + sum([i.size() for i in self.children])
+
+    def get_child_state(self, state):
+        for c in self.children:
+            if c.state == state:
+                return c
+
+    def get_child_edge(self, edge):
+        for c in self.children:
+            if c.edge == edge:
+                return c
 
 class NotaktoNode (Node):
-    def action_space(self, state = None):
+    def get_moves(self):
+        return self.action_space(remove_losses = False, remove_isometries = False)
+
+    def action_space(self, state = None, remove_losses = True, remove_isometries = True):
         if type(state) == type(None):
             state = self.state
         remaining = []
+        remain_arrays = []
         # Loop over both axes
         for i in range(state.shape[0]):
             for j in range(state.shape[1]):
                 # If there is an empty space
                 if state[i, j] == 0:
-                    # If it is not a loss
+                    # Play move
                     nb = copy(state)
                     nb[i, j] = 1
-                    if self.get_winner(nb) in [0, self.player]:
-                        remaining.append((i * state.shape[0]) + j)
+                    # Check if it is not a loser (winner of played game should be other player)
+                    # Include losses or not is defined by which list winner can be a part of
+                    if self.get_winner(nb) in [0, 3 - self.player] if remove_losses else [0, 1, 2]:
+                        if not remove_isometries:
+                            # Add move to returning list
+                            remaining.append((i * state.shape[0]) + j)
+                        else:
+                            # Check if it is an isomorphism
+                            if len(remain_arrays) > 0:
+                                if array_in_list(nb, remain_arrays):
+                                    continue
+                            # Add all isomorphisms to the remaining arrays (rotation and reflection)
+                            for _ in range(4):
+                                if not array_in_list(nb, remain_arrays):
+                                    remain_arrays.append(nb)
+                                if not array_in_list(nb.T, remain_arrays):
+                                   remain_arrays.append(nb.T)
+                                nb = rotate(nb)
+                            # Add move to returning list
+                            remaining.append((i * state.shape[0]) + j)
         return remaining
 
     def play_move(self, move, state = None):
@@ -146,6 +221,8 @@ class NotaktoNode (Node):
     def get_winner(self, board = None):
         if type(board) == type(None):
             board = copy(self.state)
+        else:
+            board = copy(board)
         # Rows
         for row in board:
             if np.sum(row) >= board.shape[0]:
@@ -167,27 +244,110 @@ class NotaktoNode (Node):
         return 0
 
     def get_player(self):
-        return int((np.sum(self.state) % 2) + 1)
+        return 3 - int((np.sum(self.state) % 2) + 1)
 
-    def random_move(self):
-        action = choice(self.action_space())
+    def random_move(self, remove_isometries = True, remove_losses = True):
+        actions = self.action_space(remove_losses = remove_losses,
+                                    remove_isometries = remove_isometries)
+        if actions == []:
+            return False
+        action = choice(actions)
         node = NotaktoNode(self.play_move(action), self, action)
         return node
 
-    def visit_unvisited(self):
-        return super(NotaktoNode, self).visit_unvisited(NotaktoNode)
+    def isomorphic_move(self, target, move, source = None):
+        """ Translate a move from the interal board to a target board"""
+        if type(source) == type(None):
+            source = self.state
+        # Calculate type of isomorphosm
+        for _ in range(4):
+            # Identity
+            if np.array_equal(target, source):
+                return move
+            # Reflection
+            elif np.array_equal(target.T, source):
+                return reflect_move(move, target.shape[0])
+            # Rotate target
+            target = rotate(target)
+            # Rotate the move the other direction because it is based off the original board
+            move = rotate_move_cw(move, target.shape[0])
+        return False
 
-def search(size, iterations = 100):
+    def isomorphic_child(self, target):
+        """ Find a child isomorpic to the target board"""
+        # Check all children
+        for c in self.children:
+            # Check all isomorphisms
+            for _ in range(4):
+                if np.array_equal(target, c.state) or np.array_equal(target.T, c.state):
+                    return c
+                # Rotate the target (rotates back to identity before it moves on)
+                target = rotate(target)
+        return False
+
+    def get_child_state(self, state):
+        for c in self.children:
+            if np.array_equal(c.state, state):
+                return c
+
+    def forced(self, state = None):
+        """Is a loss forced on the next turn"""
+        if type(state) == type(None):
+            s = copy(self.state)
+        else:
+            s = copy(state)
+        # If (n-1)^2 + 1 pieces are played, then garaunteed force
+        if np.sum(s) > (s.shape[0] - 1) ** 2:
+            return True
+        # Calculate possible moves for opponent
+        remaining = self.action_space(s)
+        # If all are losses, a loss is forced
+        for r in remaining:
+            if self.get_winner(self.play_move(r, s)) == 0:
+                return False
+        return True
+
+def load(filename, update = True):
+    with open(filename, "rb") as f:
+        if update:
+            return update_version(pickle_load(f))
+        return pickle_load(f)
+
+def update_version(n, parent = None):
+    new = NotaktoNode(n.state, parent, n.edge, visits = n.visits, wins = n.wins)
+    new.unvisited = n.unvisited
+    new.children = [update_version(i, new) for i in n.children]
+    return new
+
+def move_to_vec(move, size):
+    x = np.zeros([size * size], dtype = np.int32)
+    x[move] = 1
+    return np.reshape(x, [size, size])
+
+def rotate_move(move, size):
+    return int(size * (size - 1 - (move % size)) + (move // size))
+
+def rotate_move_cw(move, size):
+    return int(size * (1 + move % size) - 1 - move // size)
+
+def reflect_move(move, size):
+    return int((move % size) * size + (move // size))
+
+def search(root_node = None, iterations = 100, size = 0):
     """ Run a MC tree search """
     # Create root node
-    root_node = NotaktoNode(np.zeros([size, size], dtype = np.int32), None, None)
-    # Run search 'iterations' times
+    if type(root_node) != NotaktoNode:
+        if size > 1:
+            root_node = NotaktoNode(np.zeros([size, size], dtype = np.int32))
+        else:
+            raise(Exception("Size must be greater than 1"))
+    # Run search 'iterations' times)
     for i in range(iterations):
         #print(len(root_node.children))
         # Start at the root node
         node = root_node
         # Iteration end signal
-        end = False
+        # end = False
 
         # Selection phase (find a non-terminal / non-expanded node)
         # Traverse until an un-expanded node is found
@@ -195,24 +355,21 @@ def search(size, iterations = 100):
             # Move to the best child
             node = node.UCB_select()
             # If this is a terminal node, update and end
-            if node.winner != 0:
-                end = True
-                node.update(node.winner)
-                break
+            # if node.winner != 0:
+                # end = True
+                # node.update(node.winner)
+                # break
         # End this iteration
-        if end: continue
-
+        # if end: continue
         # Expansion Phase (choose an unvisited node to explore)
         # If non-terminal, choose an unvisited node
         if node.unvisited != []:
             node = node.visit_unvisited()
         # If terminal, update
-        elif node.winner != 0:
-            end = True
-            node.update(node.winner)
-            break
-        else:
-            break
+        #elif node.winner != 0:
+            #end = True
+            #node.update(node.winner)
+            #continue
 
         # Rollout phase (run a random game from this node)
         while True:
@@ -226,3 +383,93 @@ def search(size, iterations = 100):
             # Next node
             node = node.random_move()
     return root_node
+
+def self_play(root = None, size = 0, iterations = 1, max_games = 1):
+    if type(root) == type(None):
+        if size > 1 and type(size) == int:
+            game = NotaktoNode(np.zeros([size, size]))
+        else:
+            raise(Exception("Size must be an integer greater than 1"))
+    else:
+        game = root
+    for _ in range(max_games):
+        while game.winner == 0:
+            move = search(game, iterations = iterations).best()
+            game = NotaktoNode(game.play_move(move), game, move)
+    return game
+
+def play(env, root, opponent, root_first = True, iterations = 1, max_games = 1):
+    for _ in range(max_games):
+        wins = [0, 0]
+        player = root
+        while True:
+            if (root_first and env.turn % 2 == 0) or (not root_first and env.turn % 2 != 0):
+                move = player.best()
+                observation = env.act(move_to_vec(move, player.state.shape[0]))
+                if observation["done"] != 0:
+                    wins[observation["done"] - 1] += 1
+                    break
+                # player = player.get_child_edge(move)
+                print("------------")
+                print(player)
+                print("============")
+                iso_child = player.isomorphic_child(observation["observation"])
+                if iso_child == False:
+                    # Translate played move to an unvisited move
+                    move = player.isomorphic_move(target = player.state,
+                                                  move = np.argmax(observation["action"]),
+                                                  source = observation["observation"])
+                    if move not in player.unvisited:
+                        random_node = player.random_move()
+                        if random_node == False:
+                            random_node = player.random_move(False, True)
+                            if random_node == False:
+                                random_node = player.random_move(False, False)
+                                if random_node == False:
+                                    raise(Exception("No valid moves for player to play"))
+                                player = random_node
+                            else:
+                                player = random_node
+                        else:
+                            player = random_node
+                    else:
+                        player = player.visit_unvisited(move)
+                else:
+                    player = iso_child
+                print(player)
+                print("^^^^^^^^^^^^")
+                env.display()
+            else:
+                # Opponent plays
+                observation = opponent.act(env)
+                if observation["done"] != 0:
+                    wins[observation["done"] - 1] += 1
+                    break
+                # Traverse game tree with new move
+                env.display()
+                iso_child = player.isomorphic_child(observation["observation"])
+                # print("ISO Child")
+                # print(iso_child)
+                if iso_child == False:
+                    # Translate played move to an unvisited move
+                    move = player.isomorphic_move(target = player.state,
+                                                  move = np.argmax(observation["action"]),
+                                                  source = observation["observation"])
+                    if move not in player.unvisited:
+                        random_node = player.random_move()
+                        if random_node == False:
+                            random_node = player.random_move(False, True)
+                            if random_node == False:
+                                random_node = player.random_move(False, False)
+                                if random_node == False:
+                                    raise(Exception("No valid moves for player to play"))
+                                player = random_node
+                            else:
+                                player = random_node
+                        else:
+                            player = random_node
+                    else:
+                        player = player.visit_unvisited(move)
+                else:
+                    player = iso_child
+    return [root, wins]
