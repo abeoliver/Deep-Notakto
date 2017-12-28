@@ -14,7 +14,7 @@ class Trainer (object):
         Initializes a Trainer object
         Parameter:
             agent (Agent) - Agent to train
-            params (dict) - training parameters
+            params (dict) - params parameters
             path (string) - File path to save Tensorboard info
                                 (default "/tensorboard")
             tensorboard_interval (int) - Number of iterations between
@@ -52,7 +52,7 @@ class Trainer (object):
                     self.params[key] = defaults[key]
 
     def train(self, mode = None, source_agent = None, **kwargs):
-        """Trains the model with the set training parameters"""
+        """Trains the model with the set params parameters"""
         options = {"online": self._online_mode, "episodic": self._episodic_mode,
                    "replay": self._replay_mode}
         if mode == None:
@@ -83,7 +83,7 @@ class Trainer (object):
         self.offline(states, actions, rewards, **kwargs)
 
     def _replay_mode(self, source_agent = None, **kwargs):
-        """Experience replay training mode"""
+        """Experience replay params mode"""
         if source_agent == None:
             source_agent = self.agent
         size = len(source_agent.states)
@@ -97,14 +97,14 @@ class Trainer (object):
                      **kwargs)
 
     def online(self, state, action, reward, **kwargs):
-        """Gets a callable function for online training"""
+        """Gets a callable function for online params"""
         return lambda x: None
 
     def offline(self, **kwargs):
         pass
 
     def get_rotations(self, states, targets):
-        """Train over the rotated versions of each state and reward"""
+        """Train over the rotated versions of each state and target (or probs)"""
         # Copy states so as not to edit outside of scope
         states = list(states)
         # Collect rotated versions of each state and target

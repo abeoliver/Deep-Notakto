@@ -17,7 +17,7 @@ from deepnotakto.trainer import Trainer
 class Q (Agent):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 params = {"mode": "episodic"}, keras = False, max_queue = 100,
+                 params = {"mode": "replay"}, max_queue = 100,
                  epsilon_func = None, temp_func = None, **kwargs):
         """
         Initializes an Q learning agent
@@ -28,7 +28,9 @@ class Q (Agent):
                             is not implemented)
             name (string) - Name of the agent and episodes model
             initialize (bool) - Initialize the model randomly or not
-            params (dict) - Parameters for training
+            classifier (string) - Unique classifier
+            iterations (int) - Current params (for epislon offset) iteration of this agent
+            params (dict) - Parameters for params
             max_queue (int) - Maximum size of the replay queue
             epsilon_func ([int -> float] OR float OR None) - Epsilon schedule
             temp_func ([int -> float] OR float OR None) - Temperature parameter for softmax
@@ -40,7 +42,6 @@ class Q (Agent):
         # Parent initializer
         super(Q, self).__init__(params, max_queue = max_queue)
         self.layers = layers
-        self.keras = keras
         self.architecture = layers
         self.size = int(np.sqrt(layers[0]))
         self.shape = [self.size, self.size]
@@ -98,7 +99,7 @@ class Q (Agent):
             self.session = tf.Session(graph = self._graph)
             # Initialize model
             self.init_model(weights = weights, biases = biases)
-            # Initialize training variables like the loss and the optimizer
+            # Initialize params variables like the loss and the optimizer
             self._init_training_vars()
             # Initialize trainer (passing the agent as a parameter)
             self.trainer = QTrainer(self, params = params, **kwargs)
@@ -113,86 +114,73 @@ class Q (Agent):
         """
         with self._graph.as_default():
             with tf.name_scope("model"):
-                if self.keras:
-                    inputs = tf.keras.Input(shape = [None, self.layers[0]],
-                                            name = "INPUT")
-                    x = inputs
-                    for layer in range(1, len(self.layers) - 1):
-                        x = tf.layers.Dense(self.layers[layer])(x)
-                    outputs = tf.layers.Dense(self.layers[-1])(x)
-                    self.model = tf.keras.models.Model(inputs = inputs,
-                                                       outputs = outputs)
-                    self.model.compile(optimizer="sgd",
-                                       loss="mean_squared_error",
-                                       metrics=['accuracy'])
-                    """
-                    self.keras_tensorboard = tf.keras.callbacks.TensorBoard(
-                        log_dir = "tensorboard/{}".format(self.name)
-                    )"""
+                if not self.initialized:
+                    self.x = tf.placeholder(tf.float32,
+                                            shape = [None, self.layers[0]],
+                                            name = "inputs")
+                    self._init_weights(weights)
+                    # Tensorboard visualizations
+                    for i, weight in enumerate(self.w):
+                        self.variable_summaries(weight, "weight_" + str(i))
+                    self._init_biases(biases)
+                    # Tensorboard visualizations
+                    for i, bias in enumerate(self.b):
+                        self.variable_summaries(bias, "bias_" + str(i))
+                    # Predicted output
+                    self.activation_layers = []
+                    self.y = self._feed(self.x)
+                    self.initialized = True
+                    self.session.run(tf.global_variables_initializer())
                 else:
-                    if not self.initialized:
-                        self.x = tf.placeholder(tf.float32,
-                                                shape = [None, self.layers[0]],
-                                                name = "inputs")
-                        self._init_weights(weights)
-                        # Tensorboard visualizations
-                        for i, weight in enumerate(self.w):
-                            self.variable_summaries(weight, "weight_" + str(i))
-                        self._init_biases(biases)
-                        # Tensorboard visualizations
-                        for i, bias in enumerate(self.b):
-                            self.variable_summaries(bias, "bias_" + str(i))
-                        # Predicted output
-                        self.activation_layers = []
-                        self.y = self._feed(self.x)
-                        self.initialized = True
-                        self.session.run(tf.global_variables_initializer())
-                    else:
-                        if w != None:
-                            self.set_weights(weights)
-                        if b != None:
-                            self.set_biases(biases)
+                    if w != None:
+                        self.set_weights(weights)
+                    if b != None:
+                        self.set_biases(biases)
 
     def _init_training_vars(self):
-        """Initialize training procedure"""
+        """Initialize params procedure"""
         with self._graph.as_default():
-            with tf.name_scope("training"):
-                if not self.keras:
-                    # Targets
-                    self.q_targets = tf.placeholder(tf.float32,
-                                                    shape = [None, self.layers[0]],
-                                                    name = "q_targets")
-                    # Learning rate
-                    self.learn_rate = tf.placeholder(tf.float32)
-                    # Regular loss
-                    data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
-                                              name = "data_loss")
-                    tf.summary.scalar("Data_loss", data_loss)
-                    # Loss and Regularization
-                    self.beta_ph = tf.placeholder(tf.float32, name = "beta")
-                    # L2 Regularization
-                    if self.beta != None:
-                        with tf.name_scope("regularization"):
-                            self.l2 = self._l2_recurse(self.w)
-                            tf.summary.scalar("L2", self.l2)
-                            loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
-                                              name = "regularized_loss")
-                    else:
-                        loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
-                    loss = tf.verify_tensor_all_finite(
-                        tf.reduce_mean(loss, name = "loss"),
-                        msg = "Inf or NaN values",
-                        name = "FiniteVerify"
-                    )
-                    tf.summary.scalar("Loss", loss)
-                    # Optimizer
-                    self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                        self.learn_rate,
-                                                                        name = "optimizer")
-                    # Updater (minimizer)
-                    self.update_op = self._optimizer.minimize(loss, name ="update")
-                    # Tensorboard
-                    self.summary_op = tf.summary.merge_all()
+            with tf.name_scope("params"):
+                # Targets
+                self.q_targets = tf.placeholder(tf.float32,
+                                                shape = [None, self.layers[0]],
+                                                name = "q_targets")
+                # Learning rate
+                self.learn_rate = tf.placeholder(tf.float32)
+                # Loss
+                loss = self._get_loss_function()
+                # Optimizer
+                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                    self.learn_rate,
+                                                                    name = "optimizer")
+                # Updater (minimizer)
+                self.update_op = self._optimizer.minimize(loss, name ="update")
+                # Tensorboard
+                self.summary_op = tf.summary.merge_all()
+
+    def _get_loss_function(self):
+        # Regular loss
+        data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
+                                  name="data_loss")
+        tf.summary.scalar("Data_loss", data_loss)
+        # Loss and Regularization
+        self.beta_ph = tf.placeholder(tf.float32, name="beta")
+        # L2 Regularization
+        if self.beta != None:
+            with tf.name_scope("regularization"):
+                self.l2 = self._l2_recurse(self.w)
+                tf.summary.scalar("L2", self.l2)
+                loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
+                                      name = "regularized_loss")
+        else:
+            loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
+        loss = tf.verify_tensor_all_finite(
+            tf.reduce_mean(loss, name = "loss"),
+            msg = "Inf or NaN values",
+            name = "FiniteVerify"
+        )
+        tf.summary.scalar("Loss", loss)
+        return loss
 
     def _init_weights(self, w = None):
         """
@@ -201,11 +189,12 @@ class Q (Agent):
             w (List of (N, M) arrays) - Initial weight matricies
         """
         #with self._graph.as_default():
-        if w != None:
+        if type(w) != type(None):
             self.w = [tf.Variable(w[n], name="weights_{}".format(n),
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
         else:
+            # NOTE: STDDEV IS HARD CODED
             self.w = [tf.Variable(tf.random_normal([self.layers[n], self.layers[n + 1]],
                                                    dtype = tf.float32, stddev = .2),
                                   name="weights_{}".format(n))
@@ -225,7 +214,7 @@ class Q (Agent):
             b (List of (1, N) arrays) - Initial bias matricies
         """
         # with self._graph.as_default():
-        if b != None:
+        if type(b) != type(None):
             self.b = [tf.Variable(b[n], name = "biases_{}".format(n),
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
@@ -326,7 +315,7 @@ class Q (Agent):
         # Get Q-values
         qs = self.get_Q(state)
         # Use softmax selection if requested
-        if self.temperature > .01 and not self.deterministic:
+        if not self.deterministic and self.temperature > .01:
             probs = self.softmax(np.reshape(qs, -1) / self.temperature)
             if not np.isnan(probs).any():
                 # Get the randomly chosen action
@@ -335,14 +324,14 @@ class Q (Agent):
                 return np.reshape(action, state.shape)
         # If softmax not requested or temperature too low
         # Use e-greedy exploration
-        if np.random.rand(1) < self.epsilon and not self.deterministic:
+        if not self.deterministic and np.random.rand(1) < self.epsilon:
             return choice(self.action_space(state))
         # Use max-value selection
         else:
             # Find the best aciton (largest Q)
             max_index = np.argmax(qs)
             # Make an action vector
-            action = np.zeros(qs.size, dtype=np.int32)
+            action = np.zeros(qs.size, dtype = np.int32)
             action[max_index] = 1
             return np.reshape(action, state.shape)
 
@@ -355,19 +344,9 @@ class Q (Agent):
             (N, N) array - Q matrix for the given state
         """
         # Pass the state to the model and get array of Q-values
-        if self.keras:
-                return self.predict(state)
-        else:
-            return np.reshape(self.y.eval(session = self.session,
-                                          feed_dict = {self.x: [np.reshape(state, -1)]})[0],
-                              state.shape)
-
-    def predict(self, state):
-        if self.keras:
-            with self.session.as_default():
-                with self._graph.as_default():
-                    return np.reshape(self.model.predict(state.reshape((1, 1, state.size))),
-                                      state.shape)
+        return np.reshape(self.y.eval(session = self.session,
+                                      feed_dict = {self.x: [np.reshape(state, -1)]})[0],
+                          state.shape)
 
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
@@ -383,29 +362,22 @@ class Q (Agent):
         # Reshape states and targets of (N, N) to (1, N * N)
         STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         TARGETS = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
-        if self.keras:
-            with self._graph.as_default():
-                self.model.fit({"INPUT": STATES.reshape(-1, 1, states[0].size)},
-                               TARGETS.reshape(-1, 1, states[0].size),
-                               epochs = 1, verbose = 0,
-                               callbacks = []) # self.keras_tensorboard
-        else:
-            # Default to self.beta if no beta is given
-            if beta == None:
-                beta = self.beta
-            # Construct feed dictionary for the optimization step
-            feed_dict = {self.x: STATES, self.q_targets: TARGETS,
-                         self.learn_rate: learn_rate, self.beta_ph: beta}
-            # Optimize the network and return the tensorboard summary information
-            summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
-            if False:
-                print("******************")
-                print("PLAYER :: {}".format(self.name))
-                for i in range(len(TARGETS)):
-                    print((TARGETS[i] - self.get_Q(STATES[i])).reshape(states[0].shape))
-                    print()
-                print("******************")
-            return summary
+        # Default to self.beta if no beta is given
+        if beta == None:
+            beta = self.beta
+        # Construct feed dictionary for the optimization step
+        feed_dict = {self.x: STATES, self.q_targets: TARGETS,
+                     self.learn_rate: learn_rate, self.beta_ph: beta}
+        # Optimize the network and return the tensorboard summary information
+        summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
+        if False:
+            print("******************")
+            print("PLAYER :: {}".format(self.name))
+            for i in range(len(TARGETS)):
+                print((TARGETS[i] - self.get_Q(STATES[i])).reshape(states[0].shape))
+                print()
+            print("******************")
+        return summary
 
     def save(self, name):
         """
@@ -431,7 +403,7 @@ class Q (Agent):
         """
         with tf.name_scope("summary"):
             with tf.name_scope(name):
-                tf.summary.scalar('norm', tf.norm(var))
+                tf.summary.scalar('normalize', tf.norm(var))
                 tf.summary.scalar('max', tf.reduce_max(var))
                 tf.summary.scalar('min', tf.reduce_min(var))
                 # Log var as a histogram
@@ -470,13 +442,21 @@ class Q (Agent):
 
     def set_weight(self, index, new_w):
         """Replace a given weight with new_w"""
-        self.session.run(self._weight_assign[index],
-                         feed_dict = {self._weight_assign_ph[index]: new_w})
+        if new_w.shape == self.w[index].shape:
+            self.session.run(self._weight_assign[index],
+                             feed_dict = {self._weight_assign_ph[index]: new_w})
+        else:
+            raise(ValueError("Shape for weight #{} must be {}".format(
+                index, self.w[index].shape)))
 
     def set_bias(self, index, new_b):
         """Replace a given bias with new_b"""
-        self.session.run(self._bias_assign[index],
-                         feed_dict = {self._bias_assign_ph[index]: new_b})
+        if new_b.shape == self.b[index].shape:
+            self.session.run(self._bias_assign[index],
+                             feed_dict = {self._bias_assign_ph[index]: new_b})
+        else:
+            raise(ValueError("Shape for bias #{} must be {}".format(
+                index, self.b[index].shape)))
 
     def set_weights(self, new_w):
         """Replace all weights with new_w"""
@@ -490,7 +470,7 @@ class Q (Agent):
 
     def _l2_recurse(self, ws, n = 0):
         """
-        Recursively adds all weight norms (actually (norm ^ 2) / 2
+        Recursively adds all weight norms (actually (normalize ^ 2) / 2
         Parameters:
             ws (List of (N, M) arrays) - List of weights to be normed and added
             n (int) - Index for tensor naming
@@ -502,7 +482,7 @@ class Q (Agent):
                           self._l2_recurse(ws[1:], n + 1))
 
     def get_l2(self):
-        """Gets the L2 norm of the weights"""
+        """Gets the L2 normalize of the weights"""
         return self.l2.eval(session = self.session)
 
     def action_space(self, board):
@@ -542,19 +522,11 @@ class Q (Agent):
 
     def dual(self):
         """
-        Creates a shell player whos training affects this agent
+        Creates a shell player whos params affects this agent
         Returns:
             Q Agent
         """
         return Dual(self)
-
-    @property
-    def params(self):
-        return self.trainer.params
-
-    @params.setter
-    def params(self, value):
-        self.trainer.training_params(value)
 
     @property
     def epsilon(self):
@@ -598,10 +570,18 @@ class Q (Agent):
         else:
             raise ValueError("This value is not permitted as a temperature schedule")
 
+    @property
+    def params(self):
+        return self.trainer.params
+
+    @params.setter
+    def params(self, value):
+        self.trainer.training_params(value)
+
 class QTrainer (Trainer):
     def default_params(self):
         return {
-            "type": "episodic",
+            "mode": "episodic",
             "learn_rate": 1e-4,
             "rotate": False,
             "epochs": 1,
@@ -610,11 +590,11 @@ class QTrainer (Trainer):
         }
 
     def online(self, state, action, reward, learn_rate = None, **kwargs):
-        """Gets a callable function for online training"""
+        """Gets a callable function for online params"""
         self.offline([state], [action], [reward], 1, 1, learn_rate, **kwargs)
 
-    def offline(self, states = None, actions = None, rewards = None, batch_size = None, epochs = None,
-                learn_rate = None, rotate = None):
+    def offline(self, states = None, actions = None, rewards = None, batch_size = None,
+                epochs = None, learn_rate = None, rotate = None):
         """
         Trains the agent over a set of state, action, reward triples
         Parameters:

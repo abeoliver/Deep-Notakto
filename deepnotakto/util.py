@@ -105,7 +105,7 @@ def new_record_file(name):
                       "NAME                      ARCHITECTURE                            GAMMA     BETA     L-RATE    ITERS        QUALITY\n",
                       ("=" * 120) + "\n"])
 
-def norm(x):
+def normalize(x):
     """Normalize an array"""
     xmax, xmin = x.max(), x.min()
     # Catch divide by zero

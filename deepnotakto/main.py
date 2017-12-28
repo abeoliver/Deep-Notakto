@@ -17,7 +17,7 @@ train_dict = {"mode": "episodic", "learn_rate": 1e-8, "rotate": True,
 a = Q([9, 100, 9], gamma = .7, epsilon = 1.0, training = train_dict,
       name = "debug", keras = True)
 #a = util.load_agent("agents/saves/Q(22a61).npz", Q)
-#a.training_params(training = train_dict)
+#a.training_params(params = train_dict)
 #a.trainer.iteration = 0
 r = RandomAgent(e)
 a.mop = False

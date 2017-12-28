@@ -194,7 +194,7 @@ class GameWithConfidences (Visualization):
         # DISPLAY CONFIDENCS
         if self.show_confidences:
             # Normalize the confidences
-            normed = util.norm(confidences)
+            normed = util.normalize(confidences)
             # Get the colored rectangles representing the confidences
             start_conf_point = [self.piece_size * (self.side + 2),
                                 self.piece_size]

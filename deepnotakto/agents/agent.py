@@ -13,6 +13,7 @@ class Agent (object):
         self.rewards = deque(maxlen = max_queue)
         self.episode = []
         self.max_queue = max_queue
+        # Must be named separately because of properties in the child classes
         self.training = training
         self.architecture = "N/A"
         self.name = "agent"
@@ -37,8 +38,8 @@ class Agent (object):
         observation = env.act(action)
         # Record state, action, reward
         self.add_episode(state, action, observation["reward"])
-        # Train online (may be avoided within the function w/ training params)
-        if self.training["mode"] == "online":
+        # Train online (may be avoided within the function w/ params params)
+        if self.params["mode"] == "online":
             self.train("online")
         # Return the results
         return observation
@@ -79,9 +80,9 @@ class Agent (object):
             self.states.append(s)
             self.actions.append(a)
             self.rewards.append(r)
-        # Train episodically (may be avoided within the function w/ training params)
-        if self.training["mode"] in ["episodic", "replay"]:
-            self.train(self.training["mode"])
+        # Train episodically (may be avoided within the function w/ params params)
+        if self.params["mode"] in ["episodic", "replay"]:
+            self.train(self.params["mode"])
         # Clear episode
         self.episode = []
 
@@ -90,9 +91,9 @@ class Agent (object):
         pass
 
     def change_training(self, **kwargs):
-        """Changes the training parameters"""
+        """Changes the params parameters"""
         for key in kwargs:
-            self.training[key] = kwargs[key]
+            self.params[key] = kwargs[key]
 
     def get_Q(self, state):
         return zeros(state.shape)

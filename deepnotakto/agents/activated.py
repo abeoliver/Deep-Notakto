@@ -81,7 +81,7 @@ class SigmoidHidden (HiddenActivated):
         self.name = "Q_sigmoid_hidden({})".format(unique_classifier())
 
     def get_func(self):
-        self.func = tf.nn.sigmoid
+        self.func = tf.sigmoid
 
 class TanhAll (AllActivated):
     def get_name(self):
