@@ -129,12 +129,15 @@ class QTree (Q):
         # Return the results
         return observation
 
-    def get_Q(self, state):
+    def get_probs(self, state):
         probs = self._probabilities.eval(session = self.session,
                                          feed_dict = {self.x: [np.reshape(state, -1)]})
         if probs.size == self.layers[-1] - 1:
             return probs[0]
         return probs
+
+    def get_Q(self, state):
+        return self.get_probs(state)
 
     def get_winner(self, state):
         if type(state) == list:

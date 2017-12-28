@@ -5,7 +5,7 @@
 # Inspired and originially structured by http://mcts.ai/code/python.html
 
 from copy import copy
-from random import choice
+from random import choice, randrange
 import numpy as np
 from pickle import dump as pickle_dump
 from pickle import load as pickle_load
@@ -43,7 +43,7 @@ class Node (object):
             Returns True if successful, returns False if no more to visit
         upadte : int -> None
             Updates a node with a given game result
-        UCB_select : None -> Node
+        select : None -> Node
             Choose a child node to traverse
         get_player : None -> int
             Gets the number of a player with the node state
@@ -68,8 +68,12 @@ class Node (object):
         self.visits = visits
         self.wins = wins
         self.player = self.get_player()
-        self.unvisited = self.action_space(remove_losses = remove_unvisited_losses)
+        self.remove_losses = remove_unvisited_losses
+        self.get_unvisited(remove_losses = remove_unvisited_losses)
         self.winner = self.get_winner()
+
+    def get_unvisited(self, remove_losses = False):
+        self.unvisited = self.action_space(remove_losses = remove_losses)
 
     def __repr__(self):
         if type(self.parent) == type(None):
@@ -127,7 +131,10 @@ class Node (object):
             # Remove move from untried moved
             self.unvisited.remove(move)
             # Create a new node for this child
-            new_node = type(self)(self.play_move(move), self, move)
+            new_node = type(self)(state = self.play_move(move),
+                                  parent = self,
+                                  edge = move,
+                                  remove_unvisited_losses = self.remove_losses)
             # Add new node to children
             self.children.append(new_node)
             return new_node
@@ -150,7 +157,7 @@ class Node (object):
             # return choice(self.get_moves())
         return max(self.children, key = lambda c: c.visits).edge
 
-    def UCB_select(self):
+    def select(self):
         """ Select the next child """
         return max(self.children, key = lambda c: c.wins / c.visits + np.sqrt(2 * np.log(self.visits) / c.visits))
 
@@ -171,7 +178,18 @@ class Node (object):
             if c.edge == edge:
                 return c
 
+    def child_visits(self):
+        """ Sum of the visits of all children"""
+        s = 0
+        for c in self.children:
+            s += c.visits
+        return s
+
+    def get_policy(self, temperature = 1):
+        pass
+
 class NotaktoNode (Node):
+
     def get_moves(self):
         return self.action_space(remove_losses = False, remove_isometries = False)
 
@@ -307,6 +325,104 @@ class NotaktoNode (Node):
                 return False
         return True
 
+class GuidedNotaktoNode (NotaktoNode):
+    def __init__(self, state, network, parent = None, edge = None, visits = 0, wins = 0,
+                 remove_unvisited_losses = False, total_value = 0, prior = 0):
+        self.network = network
+        self.unvisited_probs = []
+        self.n = visits         # Visits to this state
+        self.w = total_value    # Total value of this state
+        if parent != None:
+            self.p = prior      # Prior probability of this state
+        else:
+            self.p = 1.0        # If root node, prior is 100%
+        super(GuidedNotaktoNode, self).__init__(state = state, parent = parent, edge = edge,
+                                                visits = visits, wins = wins,
+                                                remove_unvisited_losses = remove_unvisited_losses)
+
+    def update(self, value):
+        self.visits += 1
+        self.n += 1
+        self.w += value
+
+    def select(self):
+        # Q(s,a) + U(s,a)
+        total =  self.child_visits()
+        f = lambda c: (c.w / c.n) + (np.sqrt(2.0) * c.p * (np.sqrt(total) / (1 + c.n)))
+        return max(self.children, key = f)
+
+    def get_unvisited(self, remove_losses = False):
+        self.unvisited, self.unvisited_probs = self.action_space(remove_losses = remove_losses,
+                                                                 get_probs = True)
+
+    def action_space(self, state = None, remove_losses = True, remove_isometries = True,
+                     get_probs = False):
+        if type(state) == type(None):
+            state = self.state
+        remaining = []
+        remain_arrays = []
+        # Get probabilities
+        if get_probs:
+            probs = self.network.get_probs(state).reshape(state.shape)
+            remain_probs = []
+        # Loop over both axes
+        for i in range(state.shape[0]):
+            for j in range(state.shape[1]):
+                # If there is an empty space
+                if state[i, j] == 0:
+                    # Play move
+                    nb = copy(state)
+                    nb[i, j] = 1
+                    # Check if it is not a loser (winner of played game should be other player)
+                    # Include losses or not is defined by which list winner can be a part of
+                    if self.get_winner(nb) in [0, 3 - self.player] if remove_losses else [0, 1, 2]:
+                        if not remove_isometries:
+                            # Add move to returning list
+                            remaining.append((i * state.shape[0]) + j)
+                            if get_probs:
+                                remain_probs.append(probs[i, j])
+                        else:
+                            # Check if it is an isomorphism
+                            if len(remain_arrays) > 0:
+                                if array_in_list(nb, remain_arrays):
+                                    continue
+                            # Add all isomorphisms to the remaining arrays (rotation and reflection)
+                            for _ in range(4):
+                                if not array_in_list(nb, remain_arrays):
+                                    remain_arrays.append(nb)
+                                if not array_in_list(nb.T, remain_arrays):
+                                   remain_arrays.append(nb.T)
+                                nb = rotate(nb)
+                            # Add move to returning list
+                            remaining.append((i * state.shape[0]) + j)
+                            if get_probs:
+                                remain_probs.append(probs[i, j])
+        if get_probs:
+            return (remaining, remain_probs)
+        return remaining
+
+    def visit_unvisited(self, move = None):
+        if len(self.unvisited) > 0:
+            # Randomly choose a new move
+            if move == None:
+                move_index = randrange(len(self.unvisited))
+            else:
+                move_index = self.unvisited.index(move)
+            move = self.unvisited.pop(move_index)
+            prob = self.unvisited_probs.pop(move_index)
+            # Create a new node for this child
+            new_node = GuidedNotaktoNode(state = self.play_move(move),
+                                         network = self.network,
+                                         parent = self,
+                                         edge = move,
+                                         remove_unvisited_losses = self.remove_losses,
+                                         prior = prob)
+            # Add new node to children
+            self.children.append(new_node)
+            return new_node
+        else:
+            raise(IndexError("Unvisited list is empty"))
+
 def load(filename, update = True):
     with open(filename, "rb") as f:
         if update:
@@ -333,25 +449,18 @@ def rotate_move_cw(move, size):
 def reflect_move(move, size):
     return int((move % size) * size + (move // size))
 
-def search(root_node = None, iterations = 100, size = 0):
+def search(root_node = None, iterations = 100):
     """ Run a MC tree search """
-    # Create root node
-    if type(root_node) != NotaktoNode:
-        if size > 1:
-            root_node = NotaktoNode(np.zeros([size, size], dtype = np.int32))
-        else:
-            raise(Exception("Size must be greater than 1"))
-    # Run search 'iterations' times)
+    # Run search 'iterations' times
     for i in range(iterations):
         # Start at the root node
         node = root_node
-        # Iteration end signal
 
         # Selection phase (find a non-terminal / non-expanded node)
         # Traverse until an un-expanded node is found
         while node.unvisited == [] and node.children != []:
             # Move to the best child
-            node = node.UCB_select()
+            node = node.select()
 
         # Expansion Phase (choose an unvisited node to explore)
         # If non-terminal, choose an unvisited node
