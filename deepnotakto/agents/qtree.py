@@ -25,8 +25,8 @@ class QTree (Q):
         # Call parent initializer
         super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
                                     iterations, params, max_queue, None, None, **kwargs)
-        # Like states and actions, record tree decided probabilities
-        self.probabilities = deque(maxlen = max_queue)
+        # Like states and actions, record tree decided policies
+        self.policies = deque(maxlen = max_queue)
         self.winners = deque(maxlen = max_queue)
 
     def initialize(self, weights = None, biases = None, force = False,
@@ -55,7 +55,7 @@ class QTree (Q):
     def init_model(self, weights = None, biases = None):
         super(QTree, self).init_model(weights, biases)
         self._probabilities = tf.nn.softmax(self.y[:, 1:])
-        self._value = tf.sigmoid(self.y[:, 0])
+        self._value = tf.tanh(self.y[:, 0])
 
     def _init_training_vars(self):
         """Initialize params procedure"""
@@ -113,7 +113,7 @@ class QTree (Q):
 
     def clear(self):
         super(QTree, self).clear()
-        self.probabilities = deque(maxlen = self.max_queue)
+        self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen=self.max_queue)
 
     def act(self, env):
@@ -129,7 +129,7 @@ class QTree (Q):
         # Return the results
         return observation
 
-    def get_probs(self, state):
+    def policy(self, state):
         probs = self._probabilities.eval(session = self.session,
                                          feed_dict = {self.x: [np.reshape(state, -1)]})
         if probs.size == self.layers[-1] - 1:
@@ -137,9 +137,9 @@ class QTree (Q):
         return probs
 
     def get_Q(self, state):
-        return self.get_probs(state)
+        return self.policy(state)
 
-    def get_winner(self, state):
+    def value(self, state):
         if type(state) == list:
             feed = [np.reshape(s, -1) for s in state]
         elif type(state) == np.ndarray:
@@ -201,7 +201,7 @@ class QTreeTrainer (Trainer):
             batch_size = self.params["batch_size"]
         if states == None or probs == None or winners == None:
             states = self.agent.states
-            probs = self.agent.probabilities
+            probs = self.agent.policies
             winners = self.agent.winners
         # Train for each epoch
         for epoch in range(epochs):

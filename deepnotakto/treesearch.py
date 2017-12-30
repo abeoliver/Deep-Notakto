@@ -51,7 +51,7 @@ class Node (object):
             Gets a random node to move into
     """
     def __init__(self, state, parent = None, edge = None, visits = 0,
-                 wins = 0, remove_unvisited_losses = False):
+                 wins = 0, remove_unvisited_losses = True):
         """
         Creates a Node objedct
         Parameters:
@@ -75,18 +75,24 @@ class Node (object):
     def get_unvisited(self, remove_losses = False):
         self.unvisited = self.action_space(remove_losses = remove_losses)
 
-    def __repr__(self):
+    def __str__(self):
         if type(self.parent) == type(None):
-            return "ROOT NODE at {} (P1 : {} wins)".format(self.visits, self.visits - self.wins)
+            return "ROOT NODE after {}".format(self.visits)
         return "Node (Player {}, Winner {})" \
                "\nWins : {} and Visits : {}" \
-               "\nState:  {}]".format(
+               "\nUpper Confidence Bound : {}" \
+               "\nState:  {}".format(
             str(self.player), str(self.winner), str(self.wins), str(self.visits),
-            str(self.state).replace("\n", "\n\t")
+            str(self.ucb(self)), str(self.state).replace("\n", "\n\t")
         )
 
-    def __str__(self):
-        return self.__repr__()
+    def __repr__(self):
+        if type(self.parent) == type(None):
+            return "ROOT NODE after {}".format(self.visits)
+        return "Node (P{}, W{}) (Ws {}, Vs {}) " \
+               "State:  {}".format(
+            str(self.player), str(self.winner), str(self.wins), str(self.visits),
+            str(self.state).replace("\n", " "))
 
     def __getitem__(self, key):
         if type(key) != int:
@@ -94,6 +100,10 @@ class Node (object):
         elif abs(key) > len(self.children):
             raise(KeyError("Index out of range"))
         return self.children[key]
+
+    def __iter__(self):
+        for c in self.children:
+            yield c
 
     def display_children(self):
         for i in self.children:
@@ -157,9 +167,12 @@ class Node (object):
             # return choice(self.get_moves())
         return max(self.children, key = lambda c: c.visits).edge
 
+    def ucb(self, c):
+        return (c.wins / c.visits) + np.sqrt(2 * np.log(self.visits) / c.visits)
+
     def select(self):
         """ Select the next child """
-        return max(self.children, key = lambda c: c.wins / c.visits + np.sqrt(2 * np.log(self.visits) / c.visits))
+        return max(self.children, key = lambda c: self.ucb(c))
 
     def save(self, filename):
         with open(filename, "wb") as outFile:
@@ -178,24 +191,18 @@ class Node (object):
             if c.edge == edge:
                 return c
 
-    def child_visits(self):
-        """ Sum of the visits of all children"""
-        s = 0
-        for c in self.children:
-            s += c.visits
-        return s
-
     def get_policy(self, temperature = 1):
         pass
 
 class NotaktoNode (Node):
-
     def get_moves(self):
         return self.action_space(remove_losses = False, remove_isometries = False)
 
     def action_space(self, state = None, remove_losses = True, remove_isometries = True):
         if type(state) == type(None):
             state = self.state
+        if self.get_winner(state) != 0:
+            return []
         remaining = []
         remain_arrays = []
         # Loop over both axes
@@ -327,7 +334,7 @@ class NotaktoNode (Node):
 
 class GuidedNotaktoNode (NotaktoNode):
     def __init__(self, state, network, parent = None, edge = None, visits = 0, wins = 0,
-                 remove_unvisited_losses = False, total_value = 0, prior = 0):
+                 remove_unvisited_losses = True, total_value = 0, prior = 0):
         self.network = network
         self.unvisited_probs = []
         self.n = visits         # Visits to this state
@@ -340,18 +347,36 @@ class GuidedNotaktoNode (NotaktoNode):
                                                 visits = visits, wins = wins,
                                                 remove_unvisited_losses = remove_unvisited_losses)
 
+    def __str__(self):
+        if type(self.parent) == type(None):
+            return "ROOT NODE after {}".format(self.visits)
+        return "Node (Player {}, Winner {})" \
+               "\nVisits : {}, Total Value : {}, and Prior : {}" \
+                "\nUpper Confidence Bound : {}" \
+               "\nState:  {}".format(
+            str(self.player), str(self.winner), str(self.n), str(self.w), str(self.p),
+            str(self.ucb(self)), str(self.state).replace("\n", "\n\t")
+        )
+
+    def __repr__(self):
+        if type(self.parent) == type(None):
+            return "ROOT NODE after {} (P1 : {} wins)".format(self.visits, self.visits - self.wins)
+        return "Node (P{}, W{}) (N {}, W {}, P {}) " \
+               "State:  {}".format(
+            str(self.player), str(self.winner), str(self.n), str(self.w), str(self.p),
+            str(self.state).replace("\n", " "))
+
     def update(self, value):
         self.visits += 1
         self.n += 1
         self.w += value
+        if type(self.parent) != type(None):
+            self.parent.update(value)
 
-    def select(self):
-        # Q(s,a) + U(s,a)
-        total =  self.child_visits()
-        f = lambda c: (c.w / c.n) + (np.sqrt(2.0) * c.p * (np.sqrt(total) / (1 + c.n)))
-        return max(self.children, key = f)
+    def ucb(self, c):
+        return (c.w / c.n) + (np.sqrt(2) * c.p * (np.sqrt(self.visits) / (1 + c.n)))
 
-    def get_unvisited(self, remove_losses = False):
+    def get_unvisited(self, remove_losses = True):
         self.unvisited, self.unvisited_probs = self.action_space(remove_losses = remove_losses,
                                                                  get_probs = True)
 
@@ -359,11 +384,13 @@ class GuidedNotaktoNode (NotaktoNode):
                      get_probs = False):
         if type(state) == type(None):
             state = self.state
+        if self.get_winner(state) != 0:
+            return []
         remaining = []
         remain_arrays = []
-        # Get probabilities
+        # Get policies
         if get_probs:
-            probs = self.network.get_probs(state).reshape(state.shape)
+            probs = self.network.policy(state).reshape(state.shape)
             remain_probs = []
         # Loop over both axes
         for i in range(state.shape[0]):
@@ -423,6 +450,23 @@ class GuidedNotaktoNode (NotaktoNode):
         else:
             raise(IndexError("Unvisited list is empty"))
 
+    def random_move(self, remove_isometries = True, remove_losses = True):
+        actions = self.action_space(remove_losses = remove_losses,
+                                    remove_isometries = remove_isometries)
+        if actions == []:
+            return False
+        action = choice(actions)
+        node = GuidedNotaktoNode(state = self.play_move(action),
+                                 network = self.network,
+                                 parent = self,
+                                 edge = action,
+                                 remove_unvisited_losses = self.remove_losses)
+        return node
+
+    @property
+    def value(self):
+        return self.network.value(self.state)
+
 def load(filename, update = True):
     with open(filename, "rb") as f:
         if update:
@@ -449,7 +493,7 @@ def rotate_move_cw(move, size):
 def reflect_move(move, size):
     return int((move % size) * size + (move // size))
 
-def search(root_node = None, iterations = 100):
+def search(root_node, iterations = 100):
     """ Run a MC tree search """
     # Run search 'iterations' times
     for i in range(iterations):
@@ -471,14 +515,37 @@ def search(root_node = None, iterations = 100):
         while True:
             # Backpropagate winner
             if node.winner != 0:
+                # The winner of the node wins
                 node.update(node.winner)
                 break
-            if node.action_space() == []:
+            elif node.action_space() == []:
+                # Player that made this position wins
                 node.update(node.player)
                 break
             # Next node
             node = node.random_move()
-    return root_node
+
+def guidedsearch(root_node, iterations = 100):
+    """ Run a MC tree search """
+    # Run search 'iterations' times
+    for i in range(iterations):
+        # Start at the root node
+        node = root_node
+
+        # Selection phase (find a non-terminal / non-expanded node)
+        # Traverse until an un-expanded node is found
+        while node.unvisited == [] and node.children != []:
+            # Move to the best child
+            node = node.select()
+
+        # Expansion phase
+        # If non-terminal, choose an unvisited node
+        if node.unvisited != []:
+            node = node.visit_unvisited()
+
+        # Backup
+        # Pass through the node's network value for its state
+        node.update(node.value)
 
 def self_play(root = None, size = 0, iterations = 1, max_games = 1):
     if type(root) == type(None):
