@@ -302,10 +302,6 @@ class Q (Agent):
                 print("Delta         -- {}".format(Q[np.argmax(action)] - c))
         return np.reshape(Q, new_state.shape)
 
-    def softmax(self, x):
-        """Compute softmax values for each sets of scores in x."""
-        return np.exp(x) / np.sum(np.exp(x), axis = 0)
-
     def get_action(self, state):
         """
         Creates an action vector for a given state
@@ -316,7 +312,7 @@ class Q (Agent):
         qs = self.get_Q(state)
         # Use softmax selection if requested
         if not self.deterministic and self.temperature > .01:
-            probs = self.softmax(np.reshape(qs, -1) / self.temperature)
+            probs = util.softmax(np.reshape(qs, -1) / self.temperature)
             if not np.isnan(probs).any():
                 # Get the randomly chosen action
                 action = np.zeros(state.size)
@@ -387,8 +383,7 @@ class Q (Agent):
         """
         # Remove epsilon function from the parameters for pickle
         with open(name, "wb") as outFile:
-            pickle.dump({"weights": [w.eval(session = self.session) for w in self.w],
-                         "biases": [b.eval(session = self.session) for b in self.b],
+            pickle.dump({"weights": self.get_weights(), "biases": self.get_biases(),
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
                          "params": self.params, "iterations": self.trainer.iteration},
@@ -424,49 +419,47 @@ class Q (Agent):
         """Gets the activation matrix of node at a cerain input"""
         pass
 
-    def get_weight(self, index):
-        """Gets an evaluated weight matrix from layer 'index'"""
+    def get_weights(self, index = None):
+        """Gets all weight matricies"""
+        if index == None:
+            return [self.w[i].eval(session = self.session) for i in range(len(self.w))]
         return self.w[index].eval(session = self.session)
 
-    def get_weights(self):
-        """Gets all weight matricies"""
-        return [self.get_weight(i) for i in range(len(self.w))]
-
-    def get_bias(self, index):
-        """Gets an evaluated bias matrix from layer 'index'"""
-        return self.b[index].eval(session = self.session)[0]
-
-    def get_biases(self):
+    def get_biases(self, index = None):
         """Gets all bias matricies"""
-        return [self.get_bias(i) for i in range(len(self.b))]
+        if index == None:
+            return [self.b[i].eval(session = self.session) for i in range(len(self.b))]
+        return self.b[index].eval(session = self.session)
 
-    def set_weight(self, index, new_w):
-        """Replace a given weight with new_w"""
-        if new_w.shape == self.w[index].shape:
-            self.session.run(self._weight_assign[index],
-                             feed_dict = {self._weight_assign_ph[index]: new_w})
-        else:
-            raise(ValueError("Shape for weight #{} must be {}".format(
-                index, self.w[index].shape)))
-
-    def set_bias(self, index, new_b):
-        """Replace a given bias with new_b"""
-        if new_b.shape == self.b[index].shape:
-            self.session.run(self._bias_assign[index],
-                             feed_dict = {self._bias_assign_ph[index]: new_b})
-        else:
-            raise(ValueError("Shape for bias #{} must be {}".format(
-                index, self.b[index].shape)))
-
-    def set_weights(self, new_w):
+    def set_weights(self, new_w, index = None):
         """Replace all weights with new_w"""
-        for i in range(len(self.w)):
-            self.set_weight(i, new_w[i])
+        def set_weight(obj, i, w):
+            if w.shape == obj.w[i].shape:
+                obj.session.run(obj._weight_assign[i],
+                                feed_dict = {obj._weight_assign_ph[i]: w})
+            else:
+                raise (ValueError("Shape for weight #{} must be {}".format(
+                    i, obj.w[i].shape)))
+        if index == None:
+            for i in range(len(self.w)):
+                set_weight(self, i, new_w[i])
+        else:
+            set_weight(self, index, new_w)
 
-    def set_biases(self, new_b):
+    def set_biases(self, new_b, index = None):
         """Replace all biases with new_b"""
-        for i in range(len(self.b)):
-            self.set_bias(i, new_b[i])
+        def set_bias(obj, i, b):
+            if b.shape == obj.b[i].shape:
+                obj.session.run(obj._bias_assign[i],
+                                feed_dict = {obj._bias_assign_ph[i]: w})
+            else:
+                raise (ValueError("Shape for bias #{} must be {}".format(
+                    i, obj.w[i].shape)))
+        if index == None:
+            for i in range(len(self.b)):
+                self.set_bias(i, new_b[i])
+        else:
+            set_bias(self, index, new_b)
 
     def _l2_recurse(self, ws, n = 0):
         """
@@ -569,14 +562,6 @@ class Q (Agent):
             self._temp_func = temp_func
         else:
             raise ValueError("This value is not permitted as a temperature schedule")
-
-    @property
-    def params(self):
-        return self.trainer.params
-
-    @params.setter
-    def params(self, value):
-        self.trainer.training_params(value)
 
 class QTrainer (Trainer):
     def default_params(self):

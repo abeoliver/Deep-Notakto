@@ -5,29 +5,36 @@
 import numpy as np
 import tensorflow as tf
 from collections import deque
+from pickle import dump
+from copy import copy
+from random import shuffle, sample
 
 import deepnotakto.util as util
 from deepnotakto.agents.Q import Q
 from deepnotakto.trainer import Trainer
+from deepnotakto.treesearch import GuidedNotaktoNode, guidedsearch
 
 class QTree (Q):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 params = {"mode": "tree"}, max_queue = 100, **kwargs):
+                 params = {}, max_queue = 100, play_simulations = 10, **kwargs):
         # Get classifier
         if classifier == None:
             classifier = util.unique_classifier()
         # Get name
         if name == None:
             name = "QTree({})".format(classifier)
-        # Add value node
-        layers[-1] = layers[-1] + 1
+        # Add value node if not added yet
+        if layers[0] == layers[-1]:
+            layers[-1] += 1
         # Call parent initializer
         super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
                                     iterations, params, max_queue, None, None, **kwargs)
         # Like states and actions, record tree decided policies
         self.policies = deque(maxlen = max_queue)
         self.winners = deque(maxlen = max_queue)
+        # Number of simulations to run on each move when playing
+        self.play_simulations = play_simulations
 
     def initialize(self, weights = None, biases = None, force = False,
                    params = None, **kwargs):
@@ -116,18 +123,9 @@ class QTree (Q):
         self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen=self.max_queue)
 
-    def act(self, env):
-        # Get current environment state
-        state = env.observe()
-        # Get desired action
-        action = self.get_action(state)
-        # Apply the action and retrieve observation
-        observation = env.act(action)
-        # Train online (may be avoided within the function w/ params params)
-        if self.params["mode"] == "online":
-            self.train("online")
-        # Return the results
-        return observation
+    def _act(self, env):
+        """ Gets a move for a given environment, plays it, and returns the result"""
+        return env.act(self.get_action(env.observe()))
 
     def policy(self, state):
         probs = self._probabilities.eval(session = self.session,
@@ -137,7 +135,7 @@ class QTree (Q):
         return probs
 
     def get_Q(self, state):
-        return self.policy(state)
+        return self.policy(state).reshape(state.shape)
 
     def value(self, state):
         if type(state) == list:
@@ -167,9 +165,19 @@ class QTree (Q):
         #print(self.session.run(self.loss, feed_dict = feed_dict))
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
 
-    def save(self, name):
-        # Todo
-        pass
+    def save_as_prob_model(self, name):
+        layers = copy(self.layers)
+        layers[-1] -= 1
+        with open(name, "wb") as outFile:
+            dump({"weights": [w.eval(session = self.session)[:, 1:] for w in self.w],
+                  "biases": [b.eval(session = self.session)[:, 1:] for b in self.b],
+                  "layers": layers, "gamma": self.gamma, "name": self.name,
+                  "beta": self.beta, "classifier": self.classifier,
+                  "params": self.params, "iterations": self.trainer.iteration},
+                 outFile)
+
+    def train(self, **kwargs):
+        self.trainer.train(**kwargs)
 
     def add_episode(self, *args, **kwargs):
         # Not necessary, removing functionality
@@ -178,6 +186,84 @@ class QTree (Q):
     def save_episode(self, *args, **kwargs):
         # Not necessary, removing functionality
         pass
+
+    def save_point(self, state, probs, winner):
+        self.states.append(state)
+        self.policies.append(probs)
+        self.winners.append(winner)
+
+    def self_play(self, games, simulations):
+        for _ in range(games):
+            states = []
+            policies = []
+            # Start with a root node
+            node = GuidedNotaktoNode(np.zeros(self.shape), self, explore = 1,
+                                     remove_unvisited_losses = False)
+            while True:
+                # Separate node from tree and reset it
+                node.separate()
+                # Run a guided search
+                guidedsearch(node, simulations)
+                # Save the information from this node
+                states.append(node.state)
+                policy = node.get_policy()
+                policies.append(policy.reshape(node.state.shape))
+                # Choose move based on policy
+                # root = root.select()
+                node = node.choose_by_policy(policy)
+                # If terminal, backpropogate winner and save (state, policy, winner)
+                if node.winner != 0:
+                    winner = node.winner
+                    states.append(node.state)
+                    policies.append(np.zeros(node.state.shape))
+                    break
+                elif node.action_space() == []:
+                    # Player that made this position wins
+                    winner = node.player
+                    states.append(node.state)
+                    policies.append(np.zeros(node.state.shape))
+                    break
+            # Add these data points
+            for i in range(len(states)):
+                current_player = 1 + (i % 2)
+                self.save_point(states[i], policies[i], 1 if winner == current_player else -1)
+
+    def act(self, env):
+        states = []
+        policies = []
+        # Start with a root node
+        node = GuidedNotaktoNode(env.observe(), self, explore = 1)
+        if node.action_space() != []:
+            while True:
+                # Separate node from tree and reset it
+                # node.separate()
+                node.parent = None
+                # Run a guided search
+                guidedsearch(node, self.play_simulations)
+                # Save the information from this node
+                states.append(node.state)
+                policies.append(node.get_policy().reshape(node.state.shape))
+                # Choose move based on policy
+                node = node.choose_by_visits()
+                # If terminal, backpropogate winner and save (state, policy, winner)
+                if node.winner != 0:
+                    winner = node.winner
+                    break
+                if node.action_space() == []:
+                    # Player that made this position wins
+                    winner = node.player
+                    break
+        else:
+            node = node.random_move(False, False)
+        # Add these data points
+        for i in range(len(states)):
+            current_player = 1 + (i % 2)
+            self.save_point(states[i], policies[i], 1 if winner == current_player else -1)
+        # Get the desired move
+        move = np.zeros(node.state.shape)
+        move[node.edge // move.shape[0], node.edge % move.shape[0]] = 1
+        # Play the move and return the result
+        return env.act(move)
 
 class QTreeTrainer (Trainer):
     def default_params(self):
@@ -189,7 +275,20 @@ class QTreeTrainer (Trainer):
             "replay_size": 20
         }
 
-    def offline(self, states = None, probs = None, winners = None, batch_size = None,
+    def train(self, **kwargs):
+        # Randomly sample from memory
+        size = len(self.agent.states)
+        if size > self.params["replay_size"]:
+            indexes = sample(range(size), self.params["replay_size"])
+        else:
+            indexes = range(size)
+        # Train on this sample
+        self.offline([self.agent.states[i] for i in indexes],
+                     [self.agent.policies[i] for i in indexes],
+                     [self.agent.winners[i] for i in indexes],
+                     **kwargs)
+
+    def offline(self, states = None, policies = None, winners = None, batch_size = None,
                 epochs = None, learn_rate = None, rotate = None):
         if learn_rate == None:
             learn_rate = self.params["learn_rate"]
@@ -199,15 +298,15 @@ class QTreeTrainer (Trainer):
             epochs = self.params["epochs"]
         if batch_size == None:
             batch_size = self.params["batch_size"]
-        if states == None or probs == None or winners == None:
+        if states == None or policies == None or winners == None:
             states = self.agent.states
-            probs = self.agent.policies
+            policies = self.agent.policies
             winners = self.agent.winners
         # Train for each epoch
         for epoch in range(epochs):
             # Rotate if required
             if rotate:
-                states, probs = self.get_rotations(states, probs)
+                states, policies, winners = self.get_rotations(states, policies, winners)
             # Separate into batches and train
             # Batching
             # Shuffle all indicies
@@ -219,7 +318,7 @@ class QTreeTrainer (Trainer):
             for batch in batches:
                 # Get the states and targets for the indicies in the batch and update
                 summary = self.agent.update([states[b] for b in batch],
-                                            [probs[b] for b in batch],
+                                            [policies[b] for b in batch],
                                             [winners[b] for b in batch],
                                             learn_rate)
             # Record if Tensorboard recording enabled
@@ -229,3 +328,34 @@ class QTreeTrainer (Trainer):
                 self.writer.add_summary(summary, self.iteration)
             # Increase iteration counter
             self.iteration += 1
+
+    def online(self, state, probs, winner, learn_rate = None, **kwargs):
+        """Gets a callable function for online params"""
+        self.offline([state], [probs], [winner], 1, 1, learn_rate, **kwargs)
+
+    def get_rotations(self, states, policies, winners):
+        """Train over the rotated versions of each state and target (or probs)"""
+        # Copy states so as not to edit outside of scope
+        states = list(states)
+        policies = list(policies)
+        # Collect rotated versions of each state and target
+        new_states = []
+        new_policies = []
+        new_winners = []
+        for s, p, w in zip(states, policies, winners):
+            # Aliases for rotating and renaming
+            S = s
+            P = p
+            for i in range(3):
+                # Rotate them
+                rs = util.rotate(S)
+                rp = util.rotate(P)
+                # Add them to the new lists
+                new_states.append(rs)
+                new_policies.append(rp)
+                new_winners.append(w)
+                # Rename the rotations to be normal
+                S = rs
+                P = rp
+        # Combine lists
+        return [states + new_states, policies + new_policies, winners + new_winners]

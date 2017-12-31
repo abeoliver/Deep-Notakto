@@ -3,11 +3,8 @@
 # Deep-Notakto Project
 
 import sys
-
 import numpy as np
-
 from deepnotakto.agents.agent import Agent
-
 
 class Human (Agent):
     def __init__(self):

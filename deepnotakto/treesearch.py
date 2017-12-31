@@ -11,6 +11,7 @@ from pickle import dump as pickle_dump
 from pickle import load as pickle_load
 from deepnotakto.util import rotate, array_in_list
 from deepnotakto.environment import Env
+import deepnotakto.util as util
 
 class Node (object):
     """
@@ -72,6 +73,15 @@ class Node (object):
         self.get_unvisited(remove_losses = remove_unvisited_losses)
         self.winner = self.get_winner()
 
+    def separate(self):
+        """ Remove this node from the tree and reset it"""
+        self.parent = None
+        self.edge = None
+        self.children = []
+        self.visits = 0
+        self.wins = 0
+        self.get_unvisited(remove_losses = self.remove_losses)
+
     def get_unvisited(self, remove_losses = False):
         self.unvisited = self.action_space(remove_losses = remove_losses)
 
@@ -83,7 +93,7 @@ class Node (object):
                "\nUpper Confidence Bound : {}" \
                "\nState:  {}".format(
             str(self.player), str(self.winner), str(self.wins), str(self.visits),
-            str(self.ucb(self)), str(self.state).replace("\n", "\n\t")
+            str(self.ucb()), str(self.state).replace("\n", "\n\t")
         )
 
     def __repr__(self):
@@ -167,8 +177,10 @@ class Node (object):
             # return choice(self.get_moves())
         return max(self.children, key = lambda c: c.visits).edge
 
-    def ucb(self, c):
-        return (c.wins / c.visits) + np.sqrt(2 * np.log(self.visits) / c.visits)
+    def ucb(self, c = None):
+        if c == None:
+            c = self
+        return (c.wins / c.visits) + np.sqrt(2 * np.log(c.parent.visits) / c.visits)
 
     def select(self):
         """ Select the next child """
@@ -181,18 +193,39 @@ class Node (object):
     def size(self):
         return len(self.children) + sum([i.size() for i in self.children])
 
-    def get_child_state(self, state):
+    def get_child_by_state(self, state):
         for c in self.children:
             if c.state == state:
                 return c
 
-    def get_child_edge(self, edge):
+    def get_child_by_edge(self, edge):
         for c in self.children:
             if c.edge == edge:
                 return c
 
     def get_policy(self, temperature = 1):
-        pass
+        """ Gets the policy for a given searched node """
+        # High temperature -> More exploration
+        visits = []
+        for action in range(self.state.size):
+            # Get child with this action
+            found = False
+            for c in self.children:
+                if c.edge == action:
+                    visits.append(c.visits)
+                    found = True
+                    break
+            # Default
+            if not found:
+                visits.append(0)
+        visits = np.array(visits)
+        # return util.softmax(np.power(visits, 1 / temperature))
+        raised = np.power(visits, 1 / temperature)
+        summed = np.sum(raised)
+        if summed == 0.0:
+            raise(ArithmeticError("Sum of exponentiated policies is zero (visits {})".format(visits)))
+        return raised / summed
+
 
 class NotaktoNode (Node):
     def get_moves(self):
@@ -243,6 +276,13 @@ class NotaktoNode (Node):
         state[move // state.shape[0], move % state.shape[0]] = 1
         return state
 
+    def legal_move(self, move, state = None):
+        if type(state) == type(None):
+            state = copy(self.state)
+        else:
+            state = copy(state)
+        return state[move // state.shape[0], move % state.shape[0]] == 0
+
     def get_winner(self, board = None):
         if type(board) == type(None):
             board = copy(self.state)
@@ -280,35 +320,23 @@ class NotaktoNode (Node):
         node = NotaktoNode(self.play_move(action), self, action)
         return node
 
-    def isomorphic_move(self, target, move, source = None):
-        """ Translate a move from the interal board to a target board"""
-        if type(source) == type(None):
-            source = self.state
-        # Calculate type of isomorphosm
-        for _ in range(4):
-            # Identity
-            if np.array_equal(target, source):
-                return move
-            # Reflection
-            elif np.array_equal(target.T, source):
-                return reflect_move(move, target.shape[0])
-            # Rotate target
-            target = rotate(target)
-            # Rotate the move the other direction because it is based off the original board
-            move = rotate_move_cw(move, target.shape[0])
-        return False
+    def translate_move(self, target, move):
+        """ Translates a move from the interal board to a target board """
+        return translate_move(self.state, target, move)
+
+    def child_with_isomorphic_move(self, move):
+        """ Gets a child with a move isomorphic to a given one """
+        new = self.play_move(move)
+        for c in self.children:
+            if isomorphic_matrix(c.state, new):
+                return c
 
     def isomorphic_child(self, target):
         """ Find a child isomorpic to the target board"""
         # Check all children
         for c in self.children:
-            # Check all isomorphisms
-            for _ in range(4):
-                if np.array_equal(target, c.state) or np.array_equal(target.T, c.state):
-                    return c
-                # Rotate the target (rotates back to identity before it moves on)
-                target = rotate(target)
-        return False
+            if isomorphic_matrix(c.state, target):
+                return c
 
     def get_child_state(self, state):
         for c in self.children:
@@ -332,9 +360,31 @@ class NotaktoNode (Node):
                 return False
         return True
 
+    def choose_by_policy(self, policy = None, temperature = 1):
+        if type(policy) == type(None):
+            policy = self.get_policy(temperature)
+        while True:
+            action = np.random.choice(np.arange(self.state.size), p = policy)
+            if not self.legal_move(action): continue
+            if self.get_winner(self.play_move(action)) == 0:
+                child = self.child_with_isomorphic_move(action)
+                if child != None:
+                    return child
+
+    def choose_by_visits(self):
+        return max(self.children, key = lambda c: c.visits)
+        # Shouldn't need the rest of this
+        cs = sorted(self.children, key = lambda c: c.visits, reverse = True)
+        for child in cs:
+            if not self.legal_move(child.edge): continue
+            if child.winner in [0, child.player]:
+                return child
+        raise("No valid child")
+
+
 class GuidedNotaktoNode (NotaktoNode):
     def __init__(self, state, network, parent = None, edge = None, visits = 0, wins = 0,
-                 remove_unvisited_losses = True, total_value = 0, prior = 0):
+                 remove_unvisited_losses = True, total_value = 0, prior = 0, explore = 1):
         self.network = network
         self.unvisited_probs = []
         self.n = visits         # Visits to this state
@@ -343,19 +393,28 @@ class GuidedNotaktoNode (NotaktoNode):
             self.p = prior      # Prior probability of this state
         else:
             self.p = 1.0        # If root node, prior is 100%
+        self.explore = explore  # Exploration constant
         super(GuidedNotaktoNode, self).__init__(state = state, parent = parent, edge = edge,
                                                 visits = visits, wins = wins,
                                                 remove_unvisited_losses = remove_unvisited_losses)
+
+    def separate(self):
+        """ Remove this node from the tree and reset it"""
+        self.unvisited_probs = []
+        super(GuidedNotaktoNode, self).separate()
+        self.n = 0
+        self.w = 0
+        self.p = 1.0
 
     def __str__(self):
         if type(self.parent) == type(None):
             return "ROOT NODE after {}".format(self.visits)
         return "Node (Player {}, Winner {})" \
                "\nVisits : {}, Total Value : {}, and Prior : {}" \
-                "\nUpper Confidence Bound : {}" \
+               "\nUpper Confidence Bound : {}" \
                "\nState:  {}".format(
             str(self.player), str(self.winner), str(self.n), str(self.w), str(self.p),
-            str(self.ucb(self)), str(self.state).replace("\n", "\n\t")
+            str(self.ucb()), str(self.state).replace("\n", "\n\t")
         )
 
     def __repr__(self):
@@ -373,19 +432,23 @@ class GuidedNotaktoNode (NotaktoNode):
         if type(self.parent) != type(None):
             self.parent.update(value)
 
-    def ucb(self, c):
-        return (c.w / c.n) + (np.sqrt(2) * c.p * (np.sqrt(self.visits) / (1 + c.n)))
+    def ucb(self, c = None):
+        if c == None:
+            c = self
+        return (c.w / c.n) + (c.explore * c.p *
+                                    (np.sqrt(c.parent.n) / (1 + c.n)))
 
     def get_unvisited(self, remove_losses = True):
-        self.unvisited, self.unvisited_probs = self.action_space(remove_losses = remove_losses,
-                                                                 get_probs = True)
+        self.unvisited, self.unvisited_probs = self.action_space(
+            remove_losses = remove_losses, get_probs = True)
 
     def action_space(self, state = None, remove_losses = True, remove_isometries = True,
                      get_probs = False):
         if type(state) == type(None):
             state = self.state
         if self.get_winner(state) != 0:
-            return []
+            if get_probs: return [[], []]
+            else: return []
         remaining = []
         remain_arrays = []
         # Get policies
@@ -443,7 +506,8 @@ class GuidedNotaktoNode (NotaktoNode):
                                          parent = self,
                                          edge = move,
                                          remove_unvisited_losses = self.remove_losses,
-                                         prior = prob)
+                                         prior = prob,
+                                         explore = self.explore)
             # Add new node to children
             self.children.append(new_node)
             return new_node
@@ -466,6 +530,7 @@ class GuidedNotaktoNode (NotaktoNode):
     @property
     def value(self):
         return self.network.value(self.state)
+
 
 def load(filename, update = True):
     with open(filename, "rb") as f:
@@ -492,6 +557,34 @@ def rotate_move_cw(move, size):
 
 def reflect_move(move, size):
     return int((move % size) * size + (move // size))
+
+def translate_move(source, target, move):
+    """
+    Takes a move mapped on the source and translates it to the same relative
+    move on the isomorphic target board
+    """
+    # Calculate type of isomorphosm
+    for _ in range(4):
+        # Identity
+        if np.array_equal(target, source):
+            return move
+        # Reflection
+        elif np.array_equal(target.T, source):
+            return reflect_move(move, target.shape[0])
+        # Rotate target
+        target = rotate(target)
+        # Rotate the move the other direction because it is based off the original board
+        move = rotate_move_cw(move, target.shape[0])
+
+def isomorphic_matrix(m1, m2):
+    """ Checks if two matricies are isomorphic """
+    # Check all isomorphisms
+    for _ in range(4):
+        if np.array_equal(m1, m2) or np.array_equal(m1.T, m2):
+            return True
+        # Rotate the target (rotates back to identity before it moves on)
+        m1 = rotate(m1)
+    return False
 
 def search(root_node, iterations = 100):
     """ Run a MC tree search """
@@ -524,6 +617,7 @@ def search(root_node, iterations = 100):
                 break
             # Next node
             node = node.random_move()
+    return root_node
 
 def guidedsearch(root_node, iterations = 100):
     """ Run a MC tree search """
@@ -531,32 +625,16 @@ def guidedsearch(root_node, iterations = 100):
     for i in range(iterations):
         # Start at the root node
         node = root_node
-
         # Selection phase (find a non-terminal / non-expanded node)
         # Traverse until an un-expanded node is found
         while node.unvisited == [] and node.children != []:
             # Move to the best child
             node = node.select()
-
         # Expansion phase
-        # If non-terminal, choose an unvisited node
+        # If there are some nodes to be visited, choose an unvisited node
         if node.unvisited != []:
             node = node.visit_unvisited()
-
         # Backup
         # Pass through the node's network value for its state
         node.update(node.value)
-
-def self_play(root = None, size = 0, iterations = 1, max_games = 1):
-    if type(root) == type(None):
-        if size > 1 and type(size) == int:
-            game = NotaktoNode(np.zeros([size, size]))
-        else:
-            raise(Exception("Size must be an integer greater than 1"))
-    else:
-        game = root
-    for _ in range(max_games):
-        while game.winner == 0: # and not game.forced():
-            move = search(game, iterations = iterations).best()
-            game = NotaktoNode(game.play_move(move), game, move)
-    return game
+    return root_node

@@ -5,6 +5,7 @@ from numpy.random import normal
 from numpy import zeros, identity, flip
 from numpy import sum as np_sum
 from collections import deque
+from deepnotakto.trainer import Trainer
 
 class Agent (object):
     def __init__(self, training = {"mode": None}, max_queue = 100):
@@ -14,9 +15,9 @@ class Agent (object):
         self.episode = []
         self.max_queue = max_queue
         # Must be named separately because of properties in the child classes
-        self.training = training
         self.architecture = "N/A"
         self.name = "agent"
+        self.trainer = Trainer(self, training)
 
     def clear(self):
         self.states = deque(maxlen = self.max_queue)
@@ -117,3 +118,11 @@ class Agent (object):
             return True
         # Otherwise game is not over
         return False
+
+    @property
+    def params(self):
+        return self.trainer.params
+
+    @params.setter
+    def params(self, value):
+        self.trainer.training_params(value)

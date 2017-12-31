@@ -263,7 +263,6 @@ class GameWithConfidences (Visualization):
                 if self.show_confidences:
                     confidences = self.a1.get_Q(self.env.observe())
                 self.a1.act(self.env)
-                self.env.turn += 1
             # Otherwise setup for a human player's first turn
             elif self.show_confidences:
                 confidences = np.zeros(self.shape)
@@ -273,7 +272,7 @@ class GameWithConfidences (Visualization):
                 # Run event loop and get a button press if one occurs
                 button = self.events()
                 # Set the banner for the current player
-                banner = "PLAYER {}".format((self.env.turn % 2) + 1)
+                banner = "PLAYER {}".format(1 + (self.env.turn % 2))
                 # Display the game screen
                 board = self.env.observe()
                 self.display(board, confidences, banner,
@@ -301,8 +300,6 @@ class GameWithConfidences (Visualization):
                             action[n, m] = 1
                             # Play the move
                             self.env.act(action)
-                            # Increase turn counter
-                            self.env.turn += 1
                             # Exit human loop
                             break
                     # If human ended game, exit game loop
@@ -318,19 +315,20 @@ class GameWithConfidences (Visualization):
                 # ---------- COMPUTER MOVE (if needed) ----------
                 # If advanced to next move (by human or by human move) and
                 #   next player is an AI, enter AI loop
+                # Draw screen
                 if (button == "next" or h_advance) and not (self.a1_human and self.a2_human):
+                    self.display(self.env.observe(), confidences,
+                                 "WAITING FOR PLAYER {}".format(1 + (self.env.turn % 2)),
+                                 next = False)
                     # Clear button
                     button = ""
                     h_advance = False
-                    # Update banner
-                    banner = "PLAYER {}".format((self.env.turn % 2) + 1)
+                    # Update banner to next player
                     # Play the agent corresponding to the current turn
                     player = [self.a1, self.a2][self.env.turn % 2]
                     if self.show_confidences:
                         confidences = player.get_Q(self.env.observe())
                     observation = player.act(self.env)
-                    # Update turn counter
-                    self.env.turn += 1
                     # Catch illegal move
                     if observation["info"]["illegal"]:
                         banner = "Player attempted illegal move"
@@ -360,14 +358,3 @@ class GameWithConfidences (Visualization):
                     break
             # ---------- END FINAL SCREEN ----------
         # ---------- END GAME SET LOOP ----------
-
-if __name__ == "__main__":
-    from environment import Env
-    from agents.human import Human
-    from agents.Q import Q
-    e = Env(3)
-    p2 = Human()
-    # p2 = RandomAgent(e)
-    p1 = Q([9, 100, 9], gamma = .5, epsilon = .1, name = "AA",
-                training = {"type": "episodic", "learn_rate": 1e-1, "rotate": True})
-    vis = GameWithConfidences(e, p1, p2, show_confidences = True)

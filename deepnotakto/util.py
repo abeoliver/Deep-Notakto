@@ -138,3 +138,12 @@ def array_in_list(ar, l):
         if np.array_equal(ar, i):
             return True
     return False
+
+def softmax(x):
+    exped = np.exp(x - np.max(x))
+    soft = exped / exped.sum()
+    # To ensure sum to zero, offset each value by amount needed to sum to zero
+    actual_sum = np.sum(soft)
+    if actual_sum == 1.0:
+        return soft
+    return soft + (np.ones(soft.shape) * ((1.0 - actual_sum) / soft.size))
