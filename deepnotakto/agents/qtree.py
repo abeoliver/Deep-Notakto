@@ -17,7 +17,8 @@ from deepnotakto.treesearch import GuidedNotaktoNode, guidedsearch
 class QTree (Q):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
-                 params = {}, max_queue = 100, play_simulations = 10, **kwargs):
+                 params = {}, max_queue = 100, play_simulations = 10,
+                 act_mode = "q", **kwargs):
         # Get classifier
         if classifier == None:
             classifier = util.unique_classifier()
@@ -35,6 +36,8 @@ class QTree (Q):
         self.winners = deque(maxlen = max_queue)
         # Number of simulations to run on each move when playing
         self.play_simulations = play_simulations
+        # Mode of acting to do
+        self.act_mode = act_mode
 
     def initialize(self, weights = None, biases = None, force = False,
                    params = None, **kwargs):
@@ -122,10 +125,6 @@ class QTree (Q):
         super(QTree, self).clear()
         self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen=self.max_queue)
-
-    def _act(self, env):
-        """ Gets a move for a given environment, plays it, and returns the result"""
-        return env.act(self.get_action(env.observe()))
 
     def policy(self, state):
         probs = self._probabilities.eval(session = self.session,
@@ -228,42 +227,36 @@ class QTree (Q):
                 current_player = 1 + (i % 2)
                 self.save_point(states[i], policies[i], 1 if winner == current_player else -1)
 
-    def act(self, env):
+    def act(self, env, mode = None):
+        if mode == None:
+            mode = self.act_mode
+        return {"q": self.q_act, "search" : self.search_act}[mode](env)
+
+    def q_act(self, env):
+        """ Gets a move for a given environment, plays it, and returns the result"""
+        return env.act(self.get_action(env.observe()))
+
+    def search_act(self, env):
         states = []
         policies = []
         # Start with a root node
         node = GuidedNotaktoNode(env.observe(), self, explore = 1)
         if node.action_space() != []:
-            while True:
-                # Separate node from tree and reset it
-                # node.separate()
-                node.parent = None
-                # Run a guided search
-                guidedsearch(node, self.play_simulations)
-                # Save the information from this node
-                states.append(node.state)
-                policies.append(node.get_policy().reshape(node.state.shape))
-                # Choose move based on policy
-                node = node.choose_by_visits()
-                # If terminal, backpropogate winner and save (state, policy, winner)
-                if node.winner != 0:
-                    winner = node.winner
-                    break
-                if node.action_space() == []:
-                    # Player that made this position wins
-                    winner = node.player
-                    break
+            # Run a guided search
+            guidedsearch(node, self.play_simulations)
+            # Choose move based on policy
+            node = node.choose_by_visits()
         else:
             node = node.random_move(False, False)
-        # Add these data points
-        for i in range(len(states)):
-            current_player = 1 + (i % 2)
-            self.save_point(states[i], policies[i], 1 if winner == current_player else -1)
         # Get the desired move
         move = np.zeros(node.state.shape)
         move[node.edge // move.shape[0], node.edge % move.shape[0]] = 1
         # Play the move and return the result
         return env.act(move)
+
+    def mode(self, new):
+        if new in ["q", "search"]:
+            self.act_mode = new
 
 class QTreeTrainer (Trainer):
     def default_params(self):
