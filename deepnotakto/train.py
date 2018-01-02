@@ -1,13 +1,9 @@
 # train.py
 # Abraham Oliver, 2017
 # Deep Notakto Project
-
-import os
 from time import time
 
 import deepnotakto.util as util
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 				save_a2 = False, path = "", record_name = "record.txt",
@@ -38,13 +34,6 @@ def train_agent(env, a1, a2, rounds, round_length = 1, save_a1 = False,
 			a2.save("{}{}.npz".format(path, a2.name))
 		# Incrememnt round counter
 		r += 1
-
-def console_print(start, wins, round, rounds, round_length):
-	pct = int((float(wins[0]) / round_length) * 100)
-	print(util.elapsed_time(start))
-	print("Score: {}% vs {}% out of {} games [{} / {} rounds played]\n".format(
-		pct, 100 - pct, round_length, round + 1, rounds
-	))
 
 def play(env, a1, a2):
 	a1.new_episode()
@@ -84,3 +73,10 @@ def ef(a, b, c = 1):
 	alpha, beta= pow(a, c), pow(b, c)
 	q = lambda x: ((alpha * beta) + pow(x, c) * (beta - 2 * alpha)) / (2 * pow(x, c) * (beta - alpha))
 	return lambda x: max(0, min(1, q(x))) if x != 0 else 0
+
+def console_print(start, wins, round, rounds, round_length):
+	pct = int((float(wins[0]) / round_length) * 100)
+	print(util.elapsed_time(start))
+	print("Score: {}% vs {}% out of {} games [{} / {} rounds played]\n".format(
+		pct, 100 - pct, round_length, round + 1, rounds
+	))

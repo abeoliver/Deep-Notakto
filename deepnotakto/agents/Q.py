@@ -386,7 +386,7 @@ class Q (Agent):
             pickle.dump({"weights": self.get_weights(), "biases": self.get_biases(),
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
-                         "params": self.params, "iterations": self.trainer.iteration},
+                         "params": self.params, "iterations": self.iteration},
                         outFile)
 
     def variable_summaries(self, var, name):

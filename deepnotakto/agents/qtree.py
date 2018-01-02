@@ -205,8 +205,15 @@ class QTree (Q):
         self.policies.append(probs)
         self.winners.append(winner)
 
-    def self_play(self, games, simulations, train = False):
-        for _ in range(games):
+    def self_play(self, games, simulations, train = False, save_every = 0, save_name = None):
+        # Clean input
+        save_every = int(save_every)
+        games = int(games)
+        simulations = int(simulations)
+        if save_every > 0 and save_name == None:
+            save_name = self.name + ".npz"
+        # Run self play
+        for game in range(games):
             states = []
             policies = []
             # Start with a root node
@@ -243,6 +250,9 @@ class QTree (Q):
             # Train
             if train:
                 self.train()
+            # Save model
+            if save_every > 0 and game % save_every == 0:
+                self.save(save_name)
 
     def act(self, env, mode = None):
         if mode == None:

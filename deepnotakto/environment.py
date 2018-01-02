@@ -131,9 +131,11 @@ class Env (object):
             b = copy(self.board)
         else:
             b = copy(board)
-        # If (n-1)^2 + 1 pieces are played, then garaunteed force
-        if np.sum(b) > (b.shape[0] - 1) ** 2:
-            return True
+        summed = np.sum(b)
+        # If n * (n - 1) pieces are played, then garaunteed force
+        if summed > ((b.shape[0] - 1) * b.shape[0]): return True
+        # If less than n + 1 played, no possible force
+        if summed < b.shape[0] + 1: return False
         # Calculate possible moves for opponent
         remaining = self.action_space(b)
         # If all are losses, a loss is forced

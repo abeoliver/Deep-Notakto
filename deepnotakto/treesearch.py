@@ -253,10 +253,8 @@ class NotaktoNode (Node):
                             # Add move to returning list
                             remaining.append((i * state.shape[0]) + j)
                         else:
-                            # Check if it is an isomorphism
-                            if len(remain_arrays) > 0:
-                                if array_in_list(nb, remain_arrays):
-                                    continue
+                            if array_in_list(nb, remain_arrays):
+                                continue
                             # Add all isomorphisms to the remaining arrays (rotation and reflection)
                             for _ in range(4):
                                 if not array_in_list(nb, remain_arrays):
@@ -349,9 +347,11 @@ class NotaktoNode (Node):
             s = copy(self.state)
         else:
             s = copy(state)
-        # If (n-1)^2 + 1 pieces are played, then garaunteed force
-        if np.sum(s) > (s.shape[0] - 1) ** 2:
-            return True
+        summed = np.sum(s)
+        # If (n - 1) * n pieces are played, then garaunteed force
+        if summed > ((s.shape[0] - 1) * s.shape[0]): return True
+        # If less than n + 1 played, then no force possible
+        if summed < s.shape[0] + 1: return False
         # Calculate possible moves for opponent
         remaining = self.action_space(s)
         # If all are losses, a loss is forced
