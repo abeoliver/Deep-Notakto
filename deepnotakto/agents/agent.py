@@ -85,7 +85,7 @@ class Agent (object):
         if self.params["mode"] in ["episodic", "replay"]:
             self.train(self.params["mode"])
         # Clear episode
-        self.episode = []
+        self.new_episode()
 
     def save(self, **kwargs):
         """Saves an agent to a file"""

@@ -18,7 +18,7 @@ class QTree (Q):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
                  params = {}, max_queue = 100, play_simulations = 10,
-                 act_mode = "q", **kwargs):
+                 act_mode = "q", default_temp = 1, **kwargs):
         # Get classifier
         if classifier == None:
             classifier = util.unique_classifier()
@@ -38,6 +38,8 @@ class QTree (Q):
         self.play_simulations = play_simulations
         # Mode of acting to do
         self.act_mode = act_mode
+        # Default policy temperature
+        self.default_temp = default_temp
 
     def initialize(self, weights = None, biases = None, force = False,
                    params = None, **kwargs):
@@ -77,7 +79,7 @@ class QTree (Q):
                                                    shape = [None, self.layers[-1] - 1],
                                                    name = "probability_targets")
                 # Winner
-                self.winner_targets = tf.placeholder(tf.float32, shape = [None, 1],
+                self.winner_targets = tf.placeholder(tf.float32, shape = [1, None],
                                                      name = "winner_target")
                 # Learning rate
                 self.learn_rate = tf.placeholder(tf.float32)
@@ -178,20 +180,32 @@ class QTree (Q):
     def train(self, **kwargs):
         self.trainer.train(**kwargs)
 
-    def add_episode(self, *args, **kwargs):
-        # Not necessary, removing functionality
-        pass
+    def add_episode(self, state, policy, value = 0):
+        self.episode.append((state, policy, value))
 
-    def save_episode(self, *args, **kwargs):
-        # Not necessary, removing functionality
-        pass
+    def save_episode(self):
+        # If episode hasn't been used, do nothing
+        if len(self.episode) == 0:
+            return None
+        # Get winner
+        winner = 1 if self.episode[-1][2] == 0 else -1
+        # Loop through all time steps and add them to memory with the correct winner
+        for s, p, _ in self.episode:
+            self.states.append(s)
+            self.policies.append(p)
+            self.winners.append(winner)
+        # Train if requested
+        if self.params["train_live"]:
+            self.train()
+        # Clear episode
+        self.new_episode()
 
     def save_point(self, state, probs, winner):
         self.states.append(state)
         self.policies.append(probs)
         self.winners.append(winner)
 
-    def self_play(self, games, simulations):
+    def self_play(self, games, simulations, train = False):
         for _ in range(games):
             states = []
             policies = []
@@ -205,7 +219,7 @@ class QTree (Q):
                 guidedsearch(node, simulations)
                 # Save the information from this node
                 states.append(node.state)
-                policy = node.get_policy()
+                policy = node.get_policy(self.default_temp)
                 policies.append(policy.reshape(node.state.shape))
                 # Choose move based on policy
                 # root = root.select()
@@ -226,6 +240,9 @@ class QTree (Q):
             for i in range(len(states)):
                 current_player = 1 + (i % 2)
                 self.save_point(states[i], policies[i], 1 if winner == current_player else -1)
+            # Train
+            if train:
+                self.train()
 
     def act(self, env, mode = None):
         if mode == None:
@@ -237,20 +254,26 @@ class QTree (Q):
         return env.act(self.get_action(env.observe()))
 
     def search_act(self, env):
-        states = []
-        policies = []
         # Start with a root node
-        node = GuidedNotaktoNode(env.observe(), self, explore = 1)
+        state = env.observe()
+        node = GuidedNotaktoNode(state, self, explore = 1)
+        save_move_as_policy = False
         if node.action_space() != []:
             # Run a guided search
             guidedsearch(node, self.play_simulations)
+            # Save to memory
+            self.add_episode(state, node.get_policy(self.default_temp).reshape(state.shape))
             # Choose move based on policy
             node = node.choose_by_visits()
         else:
             node = node.random_move(False, False)
+            save_move_as_policy = True
         # Get the desired move
         move = np.zeros(node.state.shape)
         move[node.edge // move.shape[0], node.edge % move.shape[0]] = 1
+        if save_move_as_policy:
+            # Save to memory
+            self.add_episode(state, move, -1)
         # Play the move and return the result
         return env.act(move)
 
@@ -265,7 +288,9 @@ class QTreeTrainer (Trainer):
             "rotate": False,
             "epochs": 1,
             "batch_size": 1,
-            "replay_size": 20
+            "replay_size": 20,
+            "rotate_live": False,
+            "train_live": False
         }
 
     def train(self, **kwargs):
@@ -282,7 +307,7 @@ class QTreeTrainer (Trainer):
                      **kwargs)
 
     def offline(self, states = None, policies = None, winners = None, batch_size = None,
-                epochs = None, learn_rate = None, rotate = None):
+                epochs = None, learn_rate = None, rotate = None, rotate_live = None):
         if learn_rate == None:
             learn_rate = self.params["learn_rate"]
         if rotate == None:
@@ -291,6 +316,8 @@ class QTreeTrainer (Trainer):
             epochs = self.params["epochs"]
         if batch_size == None:
             batch_size = self.params["batch_size"]
+        if rotate_live == None:
+            rotate_live = self.params["rotate_live"]
         if states == None or policies == None or winners == None:
             states = self.agent.states
             policies = self.agent.policies
@@ -298,7 +325,7 @@ class QTreeTrainer (Trainer):
         # Train for each epoch
         for epoch in range(epochs):
             # Rotate if required
-            if rotate:
+            if rotate and not rotate_live:
                 states, policies, winners = self.get_rotations(states, policies, winners)
             # Separate into batches and train
             # Batching
@@ -309,11 +336,13 @@ class QTreeTrainer (Trainer):
             batches = list(self.chunk(order, batch_size))
             summary = None
             for batch in batches:
+                bs, bp, bw = [[states[b] for b in batch],
+                              [policies[b] for b in batch],
+                              [winners[b] for b in batch]]
+                if rotate and rotate_live:
+                    bs, bp, bw = self.get_rotations(bs, bp, bw)
                 # Get the states and targets for the indicies in the batch and update
-                summary = self.agent.update([states[b] for b in batch],
-                                            [policies[b] for b in batch],
-                                            [winners[b] for b in batch],
-                                            learn_rate)
+                summary = self.agent.update(bs, bp, bw, learn_rate)
             # Record if Tensorboard recording enabled
             if self.record and (self.iteration % self.tensorboard_interval == 0) \
                     and summary != None:

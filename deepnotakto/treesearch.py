@@ -223,7 +223,7 @@ class Node (object):
         raised = np.power(visits, 1 / temperature)
         summed = np.sum(raised)
         if summed == 0.0:
-            raise(ArithmeticError("Sum of exponentiated policies is zero (visits {})".format(visits)))
+            return np.ones(raised.shape) / raised.size
         return raised / summed
 
 
