@@ -2,9 +2,9 @@
 # Abraham Oliver, 2017
 # Deep-Nakato Project
 
-import numpy as np
 from copy import copy
-import matplotlib.pyplot as plt
+
+import numpy as np
 
 """
 Define "Observation" (dict)

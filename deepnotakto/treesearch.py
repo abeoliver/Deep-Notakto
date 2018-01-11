@@ -5,13 +5,15 @@
 # Inspired and originially structured by http://mcts.ai/code/python.html
 
 from copy import copy
-from random import choice, randrange
-import numpy as np
 from pickle import dump as pickle_dump
 from pickle import load as pickle_load
-from deepnotakto.util import rotate, array_in_list
-from deepnotakto.environment import Env
+from random import choice, randrange
+
+import numpy as np
+
 import deepnotakto.util as util
+from deepnotakto.util import rotate, array_in_list
+
 
 class Node (object):
     """

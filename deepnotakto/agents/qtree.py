@@ -2,18 +2,19 @@
 # Abraham Oliver, 2017
 # DeepNotakto Project
 
+from collections import deque
+from copy import copy
+from pickle import dump
+from random import shuffle, sample
+
 import numpy as np
 import tensorflow as tf
-from collections import deque
-from pickle import dump
-from copy import copy
-from random import shuffle, sample
-from pickle import dump
 
 import deepnotakto.util as util
 from deepnotakto.agents.Q import Q
 from deepnotakto.trainer import Trainer
 from deepnotakto.treesearch import GuidedNotaktoNode, search
+
 
 class QTree (Q):
     def __init__(self, layers, gamma = .8, beta = None, name = None,

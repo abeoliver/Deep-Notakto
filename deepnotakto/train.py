@@ -1,6 +1,7 @@
 # train.py
 # Abraham Oliver, 2017
 # Deep Notakto Project
+
 from time import time
 
 import deepnotakto.util as util

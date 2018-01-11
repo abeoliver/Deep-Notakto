@@ -1,11 +1,13 @@
 # agent.py
 # Abraham Oliver, 2017
 # Deep-Notakto Project
-from numpy.random import normal
-from numpy import zeros, identity, flip
-from numpy import sum as np_sum
 from collections import deque
+
+from numpy import sum as np_sum
+from numpy import zeros, identity, flip
+
 from deepnotakto.trainer import Trainer
+
 
 class Agent (object):
     def __init__(self, training = {"mode": None}, max_queue = 100):

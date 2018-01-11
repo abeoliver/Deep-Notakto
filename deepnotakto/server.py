@@ -2,12 +2,12 @@
 # Abraham Oliver, 2017
 # Deep Notakto Project
 
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, '..')
 from time import time, localtime
-from numpy.random import binomial, random
 from util import load_agent, average_value, seconds_to_time
-from agents.qtree import QTree
 from train import tournament
 from agents.random_agent import RandomAgent
 from environment import Env

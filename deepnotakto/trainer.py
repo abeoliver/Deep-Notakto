@@ -2,10 +2,12 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
-import numpy as np
+from random import sample
+
 import tensorflow as tf
-from random import shuffle, sample
+
 from deepnotakto.util import rotate as rotate_func
+
 
 class Trainer (object):
     def __init__(self, agent, params = None, path = None, tensorboard_interval = 0,

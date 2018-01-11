@@ -2,10 +2,10 @@
 # Abraham Oliver, 2017
 # Deep Notakto Project
 
-import pygame
 import sys
 
 import numpy as np
+import pygame
 from matplotlib.pyplot import get_cmap
 
 import deepnotakto.util as util

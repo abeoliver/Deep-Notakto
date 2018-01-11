@@ -2,9 +2,12 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
-from numpy import zeros, int32, add, equal, int32
-from random import randint, choice
+from random import choice
+
+from numpy import zeros, int32, add, int32
+
 from deepnotakto.agents.agent import Agent
+
 
 class RandomAgent (Agent):
     def __init__(self, env):

@@ -2,10 +2,12 @@
 # Abraham Oliver, 2017
 # Deep-Notakto Project
 
+from random import choice
+
 import numpy as np
 import util
 from agent import Agent
-from random import choice
+
 
 class Perfect (Agent):
     def __init__(self, move_file, size):
