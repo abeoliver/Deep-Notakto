@@ -5,6 +5,7 @@
 import numpy as np
 import pickle, hashlib
 from time import time, localtime, asctime
+from numpy.random import binomial, random
 
 def save_set(name, states, actions, rewards):
     """Save a set of states, actions, and rewards"""
@@ -105,7 +106,7 @@ def new_record_file(name):
                       "NAME                      ARCHITECTURE                            GAMMA     BETA     L-RATE    ITERS        QUALITY\n",
                       ("=" * 120) + "\n"])
 
-def normalize(x):
+def unitize(x):
     """Normalize an array"""
     xmax, xmin = x.max(), x.min()
     # Catch divide by zero
@@ -121,9 +122,10 @@ def elapsed_time(start):
 	new_time = time() - start
 	elapsed = [int(i) for i in seconds_to_time(new_time)]
 	clock = localtime(time())[3:5]
-	return "Elapsed {} : {} : {} (at {} : {})".format(elapsed[0], elapsed[1],
-													 elapsed[2], clock[0],
-													 clock[1])
+	return "Elapsed {} : {} : {} (at {} : {} {})".format(
+        elapsed[0], str(elapsed[1]).zfill(2), str(elapsed[2]).zfill(2),
+        int(clock[0]) % 12 if int(clock[0]) not in [0, 12] else 12,
+        str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
 
 def unique_classifier():
     return hashlib.sha1(str(asctime()).encode("utf-8")).hexdigest()[:5]
@@ -147,3 +149,50 @@ def softmax(x):
     if actual_sum == 1.0:
         return soft
     return soft + (np.ones(soft.shape) * ((1.0 - actual_sum) / soft.size))
+
+def create_board(index, b_size = 3):
+    x = np.zeros([b_size, b_size], dtype = np.int8)
+    if type(index) != list:
+        x[index // b_size, index % b_size] = 1
+    else:
+        for i in index:
+            x[i // b_size, i % b_size] = 1
+    return x
+
+def _clean(x, thresh):
+    x[np.abs(x) < thresh] = 0.0
+    return x
+
+def move_to_vec(move, size):
+    """ Translate a index-based move to a matrix-based move"""
+    x = np.zeros([size * size], dtype = np.int32)
+    x[move] = 1
+    return np.reshape(x, [size, size])
+
+def rotate_move(move, size, cw = False):
+    """ Rotate an index-based move (if cw, rotate clockwise, otherwise counter cw) """
+    if cw: return int(size * (1 + move % size) - 1 - move // size)
+    return int(size * (size - 1 - (move % size)) + (move // size))
+
+def reflect_move(move, size):
+    """ Reflects an index-based move across the diagonal """
+    return int((move % size) * size + (move // size))
+
+def isomorphic_matrix(m1, m2):
+    """ Checks if two matricies are isomorphic by rotation and reflection """
+    # Check all isomorphisms
+    for _ in range(4):
+        if np.array_equal(m1, m2) or np.array_equal(m1.T, m2):
+            return True
+        # Rotate the target (rotates back to identity before it moves on)
+        m1 = rotate(m1)
+    return False
+
+def average_value(agent, n = 100, p = 0):
+    s = 0
+    for _ in range(n):
+        if p == 0:
+            s += agent.value(binomial(1, random(), size = agent.shape))
+        else:
+            s += agent.value(binomial(1, p, size = agent.shape))
+    return s / n

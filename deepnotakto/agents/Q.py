@@ -47,6 +47,7 @@ class Q (Agent):
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
+        self.clip_thresh = 10.0
         if epsilon_func == None and temp_func == None:
             self.deterministic = True
         else:
@@ -146,15 +147,27 @@ class Q (Agent):
                                                 shape = [None, self.layers[0]],
                                                 name = "q_targets")
                 # Learning rate
-                self.learn_rate = tf.placeholder(tf.float32)
+                self.learn_rate = tf.placeholder(tf.float32, name = "learn_rate")
                 # Loss
-                loss = self._get_loss_function()
+                self._loss = self._get_loss_function()
                 # Optimizer
                 self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
                                                                     self.learn_rate,
                                                                     name = "optimizer")
+                # Get gradients
+                self._gradients = self._optimizer.compute_gradients(self._loss)
+                # Verify finite and real
+                name = "FiniteGradientVerify"
+                grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
+                                                      name = name), v)
+                         for g, v in self._gradients]
+                # Clip gradients
+                self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
+                self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
+                                           for g, v in grads]
                 # Updater (minimizer)
-                self.update_op = self._optimizer.minimize(loss, name ="update")
+                self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
+                                                                 name = "update")
                 # Tensorboard
                 self.summary_op = tf.summary.merge_all()
 
@@ -176,7 +189,7 @@ class Q (Agent):
             loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
         loss = tf.verify_tensor_all_finite(
             tf.reduce_mean(loss, name = "loss"),
-            msg = "Inf or NaN values",
+            msg = "Inf or NaN loss",
             name = "FiniteVerify"
         )
         tf.summary.scalar("Loss", loss)
@@ -363,7 +376,8 @@ class Q (Agent):
             beta = self.beta
         # Construct feed dictionary for the optimization step
         feed_dict = {self.x: STATES, self.q_targets: TARGETS,
-                     self.learn_rate: learn_rate, self.beta_ph: beta}
+                     self.learn_rate: learn_rate, self.beta_ph: beta,
+                     self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
         summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
         if False:
@@ -386,7 +400,8 @@ class Q (Agent):
             pickle.dump({"weights": self.get_weights(), "biases": self.get_biases(),
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
-                         "params": self.params, "iterations": self.iteration},
+                         "params": self.params, "iterations": self.iteration,
+                         "max_queue": self.max_queue},
                         outFile)
 
     def variable_summaries(self, var, name):
@@ -398,7 +413,7 @@ class Q (Agent):
         """
         with tf.name_scope("summary"):
             with tf.name_scope(name):
-                tf.summary.scalar('normalize', tf.norm(var))
+                tf.summary.scalar('norm', tf.norm(var))
                 tf.summary.scalar('max', tf.reduce_max(var))
                 tf.summary.scalar('min', tf.reduce_min(var))
                 # Log var as a histogram
@@ -463,7 +478,7 @@ class Q (Agent):
 
     def _l2_recurse(self, ws, n = 0):
         """
-        Recursively adds all weight norms (actually (normalize ^ 2) / 2
+        Recursively adds all weight norms
         Parameters:
             ws (List of (N, M) arrays) - List of weights to be normed and added
             n (int) - Index for tensor naming
@@ -475,7 +490,7 @@ class Q (Agent):
                           self._l2_recurse(ws[1:], n + 1))
 
     def get_l2(self):
-        """Gets the L2 normalize of the weights"""
+        """Gets the L2 norm of the weights"""
         return self.l2.eval(session = self.session)
 
     def action_space(self, board):
@@ -620,7 +635,12 @@ class QTrainer (Trainer):
             if rotate:
                 states, targets = self.get_rotations(states, targets)
             # Separate into batches and train
-            self.batch(states, targets, batch_size, learn_rate)
+            summary = self.batch(states, targets, batch_size, learn_rate)
+        # Record if Tensorboard recording enabled and write summary to file
+        if self.record and (self.iteration % self.tensorboard_interval == 0) and summary != None:
+            self.writer.add_summary(summary, self.iteration)
+        # Increase iteration counter
+        self.iteration += 1
 
     def batch(self, states, targets, batch_size, learn_rate = None):
         """
@@ -647,13 +667,7 @@ class QTrainer (Trainer):
             summary = self.agent.update([states[b] for b in batch],
                                          [targets[b] for b in batch],
                                          learn_rate)
-        # Record if Tensorboard recording enabled
-        if self.record and (self.iteration % self.tensorboard_interval == 0)\
-                and summary != None:
-            # Write summary to file
-            self.writer.add_summary(summary, self.iteration)
-        # Increase iteration counter
-        self.iteration += 1
+        return summary
 
 class Dual (Agent):
     def __init__(self, host):

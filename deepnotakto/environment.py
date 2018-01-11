@@ -16,7 +16,7 @@ Keys:
 """
 
 class Env (object):
-    def __init__(self, size, rewards = None):
+    def __init__(self, size, rewards = None, starting = None):
         """
         Initializes the environment
         Parameters:
@@ -25,6 +25,12 @@ class Env (object):
         # Board variables
         self.size = size
         self.shape = (size, size)
+        if type(starting) == type(None):
+            self.starting = np.zeros(self.shape, dtype = np.int8)
+            self.starting_turn = 0
+        else:
+            self.starting = starting
+            self.starting_turn = np.sum(self.starting)
         self.reset()
         if rewards == None:
             self.rewards = {
@@ -37,8 +43,8 @@ class Env (object):
     
     def reset(self):
         """Reset board"""
-        self.board = np.zeros(self.shape, dtype = np.int32)
-        self.turn = 0
+        self.board = copy(self.starting)
+        self.turn = self.starting_turn
         self._illegal = False
     
     def observe(self):
@@ -133,9 +139,9 @@ class Env (object):
             b = copy(board)
         summed = np.sum(b)
         # If n * (n - 1) pieces are played, then garaunteed force
-        if summed > ((b.shape[0] - 1) * b.shape[0]): return True
+        #if summed > ((b.shape[0] - 1) * b.shape[0]): return True
         # If less than n + 1 played, no possible force
-        if summed < b.shape[0] + 1: return False
+        #if summed < b.shape[0] + 1: return False
         # Calculate possible moves for opponent
         remaining = self.action_space(b)
         # If all are losses, a loss is forced

@@ -194,7 +194,7 @@ class GameWithConfidences (Visualization):
         # DISPLAY CONFIDENCS
         if self.show_confidences:
             # Normalize the confidences
-            normed = util.normalize(confidences)
+            normed = util.unitize(confidences)
             # Get the colored rectangles representing the confidences
             start_conf_point = [self.piece_size * (self.side + 2),
                                 self.piece_size]
@@ -259,10 +259,13 @@ class GameWithConfidences (Visualization):
             # Is the game loop finished
             done = False
             # If the first player is a computer, have it play
-            if not self.a1_human:
+            player, is_h = [(self.a1, self.a1_human), (self.a2, self.a2_human)][self.env.turn % 2]
+            if not is_h:
                 if self.show_confidences:
-                    confidences = self.a1.get_Q(self.env.observe())
-                self.a1.act(self.env)
+                    confidences = player.get_Q(self.env.observe())
+                self.display(self.env.observe(), confidences, "WAITING ON PLAYER 1",
+                             next = False)
+                player.act(self.env)
             # Otherwise setup for a human player's first turn
             elif self.show_confidences:
                 confidences = np.zeros(self.shape)
@@ -317,9 +320,6 @@ class GameWithConfidences (Visualization):
                 #   next player is an AI, enter AI loop
                 # Draw screen
                 if (button == "next" or h_advance) and not (self.a1_human and self.a2_human):
-                    self.display(self.env.observe(), confidences,
-                                 "WAITING FOR PLAYER {}".format(1 + (self.env.turn % 2)),
-                                 next = False)
                     # Clear button
                     button = ""
                     h_advance = False
@@ -328,6 +328,9 @@ class GameWithConfidences (Visualization):
                     player = [self.a1, self.a2][self.env.turn % 2]
                     if self.show_confidences:
                         confidences = player.get_Q(self.env.observe())
+                    self.display(self.env.observe(), confidences,
+                                 "WAITING FOR PLAYER {}".format(1 + (self.env.turn % 2)),
+                                 next = False)
                     observation = player.act(self.env)
                     # Catch illegal move
                     if observation["info"]["illegal"]:

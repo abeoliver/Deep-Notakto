@@ -8,17 +8,19 @@ from collections import deque
 from pickle import dump
 from copy import copy
 from random import shuffle, sample
+from pickle import dump
 
 import deepnotakto.util as util
 from deepnotakto.agents.Q import Q
 from deepnotakto.trainer import Trainer
-from deepnotakto.treesearch import GuidedNotaktoNode, guidedsearch
+from deepnotakto.treesearch import GuidedNotaktoNode, search
 
 class QTree (Q):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
                  params = {}, max_queue = 100, play_simulations = 10,
-                 act_mode = "q", default_temp = 1, **kwargs):
+                 act_mode = "search", default_temp = 1, states = None,
+                 policies = None, winners = None, guided_explore = 1, **kwargs):
         # Get classifier
         if classifier == None:
             classifier = util.unique_classifier()
@@ -26,20 +28,31 @@ class QTree (Q):
         if name == None:
             name = "QTree({})".format(classifier)
         # Add value node if not added yet
+        layers = copy(layers)
         if layers[0] == layers[-1]:
             layers[-1] += 1
         # Call parent initializer
         super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
                                     iterations, params, max_queue, None, None, **kwargs)
         # Like states and actions, record tree decided policies
-        self.policies = deque(maxlen = max_queue)
-        self.winners = deque(maxlen = max_queue)
+        if type(states) != type(None):
+            self.states = deque(states, maxlen = max_queue)
+        if type(policies) != type(None):
+            self.policies = deque(policies, maxlen = max_queue)
+        else:
+            self.policies = deque(maxlen = max_queue)
+        if type(winners) != type(None):
+            self.winners = deque(winners, maxlen = max_queue)
+        else:
+            self.winners = deque(maxlen = max_queue)
         # Number of simulations to run on each move when playing
         self.play_simulations = play_simulations
         # Mode of acting to do
         self.act_mode = act_mode
         # Default policy temperature
         self.default_temp = default_temp
+        # Exploration constant for guided search
+        self.guided_explore = guided_explore
 
     def initialize(self, weights = None, biases = None, force = False,
                    params = None, **kwargs):
@@ -84,26 +97,37 @@ class QTree (Q):
                 # Learning rate
                 self.learn_rate = tf.placeholder(tf.float32)
                 # Loss
-                self.loss = self._get_loss_function()
+                self._loss = self._get_loss_function()
                 # Optimizer
-                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate = self.learn_rate,
+                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                    self.learn_rate,
                                                                     name = "optimizer")
+                # Get gradients
+                self._gradients = self._optimizer.compute_gradients(self._loss)
+                # Verify finite and real
+                name = "FiniteGradientVerify"
+                grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
+                                                      name = name), v)
+                         for g, v in self._gradients]
+                # Clip gradients
+                self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
+                self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
+                                           for g, v in grads]
                 # Updater (minimizer)
-                self.update_op = self._optimizer.minimize(self.loss, name ="update")
+                self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
+                                                                 name = "update")
                 # Tensorboard
                 self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
         # Winner / Value loss
-        val_loss = tf.reduce_sum(tf.square(self.winner_targets - self._value),
-                                 name = "value_loss")
+        val_loss = tf.reduce_sum(tf.square(self.winner_targets - self._value), name = "value_loss")
         tf.summary.scalar("Value_loss", val_loss)
         # Cross entropy for policy
-        # prob_loss = tf.reduce_sum(tf.matmul(tf.transpose(self.prob_targets),
-        #                                      tf.log(self._probabilities)))
-        prob_loss = tf.nn.softmax_cross_entropy_with_logits(labels = self.prob_targets,
-                                                            logits = self.y[:, 1:],
-                                                            name = "policy_loss")
+        prob_loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels = self.prob_targets,
+                                                                          logits = self.y[:, 1:],
+                                                                          name = "policy_loss"))
+        tf.summary.scalar("Policy_loss", prob_loss)
         # L2 Regularization
         self.l2 = 0.0
         # Loss and Regularization
@@ -115,18 +139,16 @@ class QTree (Q):
         else:
             beta = tf.constant(0.0)
         # Full loss (negative prob loss is built into the cross entropy function)
-        loss = tf.reduce_sum(val_loss + prob_loss +
-                             beta * tf.square(self.l2),
-                             name = "loss")
+        loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2), name = "loss")
         loss = tf.verify_tensor_all_finite(loss, name = "FiniteVerify",
-                                           msg = "Inf or NaN values")
+                                           msg = "Inf or NaN loss")
         tf.summary.scalar("Loss", loss)
         return loss
 
     def clear(self):
         super(QTree, self).clear()
         self.policies = deque(maxlen = self.max_queue)
-        self.winners = deque(maxlen=self.max_queue)
+        self.winners = deque(maxlen = self.max_queue)
 
     def policy(self, state):
         probs = self._probabilities.eval(session = self.session,
@@ -143,11 +165,22 @@ class QTree (Q):
             feed = [np.reshape(s, -1) for s in state]
         elif type(state) == np.ndarray:
             feed = [np.reshape(state, -1)]
-        winner = self._value.eval(session = self.session,
-                                  feed_dict = {self.x: feed})
-        if winner.size == 1:
-            return winner[0]
-        return winner
+        val = self._value.eval(session = self.session,
+                               feed_dict = {self.x: feed})
+        if val.size == 1:
+            return val[0]
+        return val
+
+    def raw(self, state):
+        if type(state) == list:
+            feed = [np.reshape(s, -1) for s in state]
+        elif type(state) == np.ndarray:
+            feed = [np.reshape(state, -1)]
+        out = self.y.eval(session = self.session,
+                          feed_dict = {self.x: feed})
+        if out.size == 1:
+            return out[0]
+        return out
 
     def update(self, states, probs, winners, learn_rate = .01):
         # Clean winner input
@@ -160,8 +193,8 @@ class QTree (Q):
         PROBS = np.array([np.reshape(p, -1) for p in probs], dtype = np.float32)
         # Construct feed dictionary for the optimization step
         feed_dict = {self.x: STATES, self.prob_targets: PROBS,
-                     self.winner_targets: WINNERS,
-                     self.learn_rate: learn_rate}
+                     self.winner_targets: WINNERS, self.learn_rate: learn_rate,
+                     self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
         #print(self.session.run(self.loss, feed_dict = feed_dict))
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
@@ -205,7 +238,7 @@ class QTree (Q):
         self.policies.append(probs)
         self.winners.append(winner)
 
-    def self_play(self, games, simulations, train = False, save_every = 0, save_name = None):
+    def self_play(self, games, simulations, save_every = 0, save_name = None, train = True):
         # Clean input
         save_every = int(save_every)
         games = int(games)
@@ -217,19 +250,18 @@ class QTree (Q):
             states = []
             policies = []
             # Start with a root node
-            node = GuidedNotaktoNode(np.zeros(self.shape), self, explore = 1,
+            node = GuidedNotaktoNode(np.zeros(self.shape), self, explore = self.guided_explore,
                                      remove_unvisited_losses = False)
             while True:
                 # Separate node from tree and reset it
                 node.separate()
                 # Run a guided search
-                guidedsearch(node, simulations)
+                search(node, simulations, guided = True)
                 # Save the information from this node
                 states.append(node.state)
                 policy = node.get_policy(self.default_temp)
                 policies.append(policy.reshape(node.state.shape))
                 # Choose move based on policy
-                # root = root.select()
                 node = node.choose_by_policy(policy)
                 # If terminal, backpropogate winner and save (state, policy, winner)
                 if node.winner != 0:
@@ -241,7 +273,7 @@ class QTree (Q):
                     # Player that made this position wins
                     winner = node.player
                     states.append(node.state)
-                    policies.append(np.zeros(node.state.shape))
+                    policies.append(np.ones(node.state.shape) / node.state.size)
                     break
             # Add these data points
             for i in range(len(states)):
@@ -266,30 +298,47 @@ class QTree (Q):
     def search_act(self, env):
         # Start with a root node
         state = env.observe()
-        node = GuidedNotaktoNode(state, self, explore = 1)
-        save_move_as_policy = False
+        node = GuidedNotaktoNode(state, self)
         if node.action_space() != []:
             # Run a guided search
-            guidedsearch(node, self.play_simulations)
+            search(node, self.play_simulations, guided = False)
             # Save to memory
             self.add_episode(state, node.get_policy(self.default_temp).reshape(state.shape))
             # Choose move based on policy
             node = node.choose_by_visits()
         else:
             node = node.random_move(False, False)
-            save_move_as_policy = True
+            self.add_episode(state, np.ones(state.shape) / state.size, -1)
         # Get the desired move
-        move = np.zeros(node.state.shape)
+        move = np.zeros(node.state.shape, dtype = np.int8)
         move[node.edge // move.shape[0], node.edge % move.shape[0]] = 1
-        if save_move_as_policy:
-            # Save to memory
-            self.add_episode(state, move, -1)
         # Play the move and return the result
         return env.act(move)
 
     def mode(self, new):
-        if new in ["q", "search"]:
-            self.act_mode = new
+        if new.lower() in ["q", "search"]:
+            self.act_mode = new.lower()
+
+    def value_head(self):
+        """ Returns the final weights responsible for the value head (most useful when no hidden layers """
+        return self.get_weights(-1)[:, 0]
+
+    def save(self, name):
+        """
+        Save the models parameters in a .npz file
+        Parameters:
+            name (string) - File name for save file
+        """
+        # Remove epsilon function from the parameters for pickle
+        with open(name, "wb") as outFile:
+            dump({"weights": self.get_weights(), "biases": self.get_biases(),
+                  "layers": self.layers, "gamma": self.gamma, "name": self.name,
+                  "beta": self.beta, "classifier": self.classifier, "params": self.params,
+                  "iterations": self.iteration, "max_queue": self.max_queue,
+                  "play_simulations": self.play_simulations, "act_mode": self.act_mode,
+                  "default_temp": self.default_temp, "states": self.states,
+                  "policies": self.policies, "winners": self.winners},
+                 outFile)
 
 class QTreeTrainer (Trainer):
     def default_params(self):
@@ -349,7 +398,7 @@ class QTreeTrainer (Trainer):
                 bs, bp, bw = [[states[b] for b in batch],
                               [policies[b] for b in batch],
                               [winners[b] for b in batch]]
-                if rotate and rotate_live:
+                if rotate_live:
                     bs, bp, bw = self.get_rotations(bs, bp, bw)
                 # Get the states and targets for the indicies in the batch and update
                 summary = self.agent.update(bs, bp, bw, learn_rate)
@@ -358,12 +407,13 @@ class QTreeTrainer (Trainer):
                     and summary != None:
                 # Write summary to file
                 self.writer.add_summary(summary, self.iteration)
-            # Increase iteration counter
-            self.iteration += 1
+        # Increase iteration counter
+        self.iteration += 1
 
-    def online(self, state, probs, winner, learn_rate = None, **kwargs):
+    def online(self, state, probs, winner, learn_rate = None, epochs = 1, **kwargs):
         """Gets a callable function for online params"""
-        self.offline([state], [probs], [winner], 1, 1, learn_rate, **kwargs)
+        self.offline(states = [state], policies = [probs], winners = [winner],
+                     batch_size = 1, epochs = epochs, learn_rate =learn_rate, **kwargs)
 
     def get_rotations(self, states, policies, winners):
         """Train over the rotated versions of each state and target (or probs)"""

@@ -54,6 +54,12 @@ def play(env, a1, a2):
 	# Return winner
 	return env.turn % 2 + 1
 
+def tournament(env, a1, a2, games):
+	wins = [0, 0]
+	for _ in range(games):
+		wins[play(env, a1, a2) - 1] += 1
+	return wins
+
 def ef(a, b, c = 1):
 	"""
 	Epsilon change function
