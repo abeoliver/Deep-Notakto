@@ -10,15 +10,15 @@ from deepnotakto.util import rotate as rotate_func
 
 
 class Trainer (object):
-    def __init__(self, agent, params = None, path = None, tensorboard_interval = 0,
+    def __init__(self, agent, params = None, tensorboard_path = None, tensorboard_interval = 0,
                  iterations = 0):
         """
         Initializes a Trainer object
         Parameter:
             agent (Agent) - Agent to train
             params (dict) - params parameters
-            path (string) - File path to save Tensorboard info
-                                (default "/tensorboard")
+            tensorboard_path (string) - File path to save Tensorboard info
+                                        (default "/tensorboard")
             tensorboard_interval (int) - Number of iterations between
                                             tensorboard saves
         Note:
@@ -29,9 +29,10 @@ class Trainer (object):
         self.training_params(params)
         # If recording, setup tensorboard functions
         if tensorboard_interval >= 1:
-            if path == None:
-                path = "tensorboard/"
-            self.writer = tf.summary.FileWriter(path + agent.name + "/")
+            if tensorboard_path == None:
+                tensorboard_path = "tensorboard/"
+            self.tensorboard_path = tensorboard_path
+            self.writer = tf.summary.FileWriter(tensorboard_path + agent.name + "/")
             self.tensorboard_interval = tensorboard_interval
             self.record = True
         else:

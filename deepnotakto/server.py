@@ -5,41 +5,68 @@
 import os
 import sys
 
-sys.path.insert(0, '..')
 from time import time, localtime
+from pickle import dump, load
+
+sys.path.insert(0, '..')
 from util import load_agent, average_value, seconds_to_time
 from train import tournament
 from agents.random_agent import RandomAgent
 from environment import Env
-from agents.treeactivated import TanhHidden
+from agents.treeactivated import ReluHidden
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# Model Vars
-load_model = True
-name = "ServerTrained5x5"
-model_path = "agents/saves/server_trained_5x5_jan_9.npz"
-CLASS = TanhHidden
-architecture = [25, 200, 200, 200, 25]
+# MODEL VARS
+# Should load model or not
+load_model = False
+# Agent name
+name = "Goal3x3Relu"
+# Path to save agent to
+model_path = "agents/saves/goal_3x3_jan_22"
+# Class of agent
+CLASS = ReluHidden
+# Layer architecture
+architecture = [9, 100, 100, 9]
+# Size of memory replay
 queue_size = 200
 
-# Training Vars
-learn_rate = .005
+# TRAINING VARS
+learn_rate = .01
 batch_size = 10
-replay_size = 100
-epochs =  2
+replay_size = 50
+epochs = 5
+# Tensorboard checkpoint path and interval
+tb_interval = 20
+tb_path = "/tmp/notakto/tensorboard/"
 
-# Self-Play Vars
+# SELF-PLAY VARS
+# Number of simulations to run for each move
 sims = 20
-save_every = 1
+# Number of self-play games to run
+save_every = 100
 
-# Evaluation Vars
-log_name = "training_plus_evaluation.log"
+# EVALUATION VARS
+# Should evaluate by tournament
 evaluate = True
+# Player to play as (1 or 2)
+player = 1
+# Number of simulations to make for every move
 play_simulations = 10
+# Number of tournament games to run
 games = 10
-env = Env(5)
+# Environment to play in
+env = Env(3)
+# Opponent to play against
 opponent = RandomAgent(env)
+# Should save tournament statistics
+save_stats = True
+# File path for statistics
+stats_path = "/tmp/notakto/{}".format(name)
+# Should log console output or not
+log = False
+# File path for log
+log_path = "/tmp/notakto/training"
 
 def elapsed_time(start):
 	new_time = time() - start
@@ -51,60 +78,115 @@ def elapsed_time(start):
         "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
 
 if __name__ == "__main__":
+    # Get path for best model save
+    best_model_path = model_path + "_best.npz"
+    # Value for comparing models
+    prev_best_model_val = 0
+
+    # Add file extensions
+    model_path += ".npz"
+    stats_path += ".stats"
+    log_path += ".log"
+
     # Create or load model
     if load_model:
         print("Loading model...", end = " ")
+        # Load an agent from the model path and with the given class definition
         agent = load_agent(model_path, CLASS)
     else:
         print("Building model...", end = " ")
+        # Create a new randomly-initialized agent with the given training/architecture parameters
         params = {"rotate_live": True, "train_live": True, "learn_rate": learn_rate,
                   "batch_size": batch_size, "replay_size": replay_size, "epochs": epochs}
         agent = CLASS(architecture, params = params, play_simulations = play_simulations,
-                      max_queue = queue_size, name = name)
+                      max_queue = queue_size, name = name, tensorboard_interval = tb_interval,
+                      tensorboard_path = tb_path)
     print("Complete")
 
-    # Train and evaluate
-    # Console and file output
+    # Create or load statistic set
+    if load_model:
+        # Get the current statistic set
+        with open(stats_path, "rb") as f:
+            statistics = load(f)
+    else:
+        # Create a new statistic set
+        statistics = {}
+
+    # Begin console output with save location and time
     clock = localtime(time())[3:5]
     o = "\n\n-------- {} --------\nSaved as '{}'\nStarted at {} : {} {}\n".format(
         agent.name, model_path, int(clock[0]) % 12 if clock[0] not in [0, 12] else 12,
         str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
     print(o)
-    with open(log_name, "a") as f: f.write(o)
+    # Write preamble to file
+    if log:
+        with open(log_path, "a") as f: f.write(o)
+
     # Start clock
     start = time()
+
+    # Main training loop
     while True:
+        # Run self play training algorithm
         print("Self play... ", end = "")
-        agent.self_play(save_every, sims)
+        agent.self_play(games = save_every, simulations = sims)
         print("Completed")
+        # Save the model
         agent.save(model_path)
+        # Prepare log/console output
         outputs = []
         outputs.append("TIME PLACEHOLDER")
         outputs.append("ITERATION PLACEHOLDER")
         outputs.append("AVG VALUE PLACEHOLDER")
+        # Evaluation tournament
         if evaluate:
+            # Search-based evaluation tournament
             agent.mode("search")
             print("Search-based evaluation... ", end = "")
-            sep1 = tournament(env, agent, opponent, games)[0]
-            #sep2 = tournament(env, opponent, agent, games)[1]
+            if player == 1:
+                s_wins = tournament(env, agent, opponent, games)[0]
+            else:
+                s_wins = tournament(env, opponent, agent, games)[1]
             print("Complete")
-            outputs.append("Search Evaluation     {}% ".format(int(sep1 * 100 / games)))
-                                                                        #int(sep2 * 100 / games)))
+            outputs.append("Search Evaluation     {}% ".format(int(s_wins * 100 / games)))
+
+            # Q-based evaluation tournament
             agent.mode("q")
             print("Q-based evaluation... ", end = "")
-            qep1 = tournament(env, agent, opponent, games)[0]
-            #qep2 = tournament(env, opponent, agent, games)[1]
+            if player == 1:
+                q_wins = tournament(env, agent, opponent, games)[0]
+            else:
+                q_wins = tournament(env, opponent, agent, games)[1]
             print("Complete")
-            outputs.append("Q Evaluation          {}%".format(int(qep1 * 100 / games)))
-                                                                        #int(qep2 * 100 / games)))
+            outputs.append("Q Evaluation          {}%".format(int(q_wins * 100 / games)))
+
+            # Designate as best model if is better than previous model
+            is_best = False
+            if (s_wins + q_wins) / (2 * games) > prev_best_model_val:
+                prev_best_model_val = (s_wins + q_wins) / (2 * games)
+                agent.save(best_model_path)
+                is_best = True
+                outputs.append("BEST MODEL")
+
+            # Save statistics
+            statistics[agent.iteration] = {"avg_val": average_value(agent, n = 1000), "time": time() - start,
+                                           "s_wins": s_wins, "q_wins": q_wins, "games": games, "best": is_best}
+        else:
+            # Save statistics
+            statistics[agent.iteration] = {"avg_val": average_value(agent, n = 1000), "time": time() - start}
+
         # Fill in placeholders
         outputs[0] = elapsed_time(start)
         outputs[1] = "Iteration             {}".format(agent.iteration)
-        outputs[2] = "Average Value         {:.3f}".format(average_value(agent, n=1000))
-        # Construct final string
+        outputs[2] = "Average Value         {:.3f}".format(average_value(agent, n = 1000))
+        # Construct final output string
         output = "".join(i + "\n" for i in outputs)
         # Output to console
         print(output)
         # Output to file
-        with open(log_name, "a") as f:
-            f.write("\n" + output)
+        if log:
+            with open(log_path, "a") as f:
+                f.write("\n" + output)
+        # Save statistics
+        with open(stats_path, "wb") as f:
+            dump(statistics, f)

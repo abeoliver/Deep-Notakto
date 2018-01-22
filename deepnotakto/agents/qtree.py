@@ -338,7 +338,9 @@ class QTree (Q):
                   "iterations": self.iteration, "max_queue": self.max_queue,
                   "play_simulations": self.play_simulations, "act_mode": self.act_mode,
                   "default_temp": self.default_temp, "states": self.states,
-                  "policies": self.policies, "winners": self.winners},
+                  "policies": self.policies, "winners": self.winners,
+                  "tensorboard_interval": self.trainer.tensorboard_interval,
+                  "tensorboard_path": self.trainer.tensorboard_path},
                  outFile)
 
 class QTreeTrainer (Trainer):
@@ -354,17 +356,19 @@ class QTreeTrainer (Trainer):
         }
 
     def train(self, **kwargs):
-        # Randomly sample from memory
-        size = len(self.agent.states)
-        if size > self.params["replay_size"]:
-            indexes = sample(range(size), self.params["replay_size"])
-        else:
-            indexes = range(size)
-        # Train on this sample
-        self.offline([self.agent.states[i] for i in indexes],
-                     [self.agent.policies[i] for i in indexes],
-                     [self.agent.winners[i] for i in indexes],
-                     **kwargs)
+        # Training loop: select memory replay and train
+        for _ in range(self.params["epochs"]):
+            # Randomly sample from memory
+            size = len(self.agent.states)
+            if size > self.params["replay_size"]:
+                indexes = sample(range(size), self.params["replay_size"])
+            else:
+                indexes = range(size)
+            # Train on this sample
+            self.offline([self.agent.states[i] for i in indexes],
+                         [self.agent.policies[i] for i in indexes],
+                         [self.agent.winners[i] for i in indexes],
+                         epochs = 1,  **kwargs)
 
     def offline(self, states = None, policies = None, winners = None, batch_size = None,
                 epochs = None, learn_rate = None, rotate = None, rotate_live = None):

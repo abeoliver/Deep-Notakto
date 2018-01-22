@@ -487,9 +487,9 @@ class GuidedNotaktoNode (NotaktoNode):
         if c.n == 0:
             return 0.0
         # TODO PICK ONE
-        return c.p * ((c.w / c.n) + (c.explore * (np.sqrt(c.parent.n) / (1 + c.n))))
+        # return c.p * ((c.w / c.n) + (c.explore * (np.sqrt(c.parent.n) / (1 + c.n))))
         return (c.p * c.w / c.n) + (c.explore * (np.sqrt(c.parent.n) / (1 + c.n)))
-        return (c.w / c.n) + (c.explore * c.p * (np.sqrt(c.parent.n) / (1 + c.n)))
+        # return (c.w / c.n) + (c.explore * c.p * (np.sqrt(c.parent.n) / (1 + c.n)))
 
     def get_unvisited(self, remove_losses = True):
         self.unvisited, self.unvisited_probs = self.action_space(

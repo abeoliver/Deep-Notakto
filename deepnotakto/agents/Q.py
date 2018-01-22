@@ -401,7 +401,9 @@ class Q (Agent):
                          "layers": self.layers, "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
                          "params": self.params, "iterations": self.iteration,
-                         "max_queue": self.max_queue},
+                         "max_queue": self.max_queue,
+                         "tensorboard_interval": self.trainer.tensorboard_interval,
+                         "tensorboard_path": self.trainer.tensorboard_path},
                         outFile)
 
     def variable_summaries(self, var, name):
