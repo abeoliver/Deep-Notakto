@@ -35,17 +35,16 @@ class QTree (Q):
         # Call parent initializer
         super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
                                     iterations, params, max_queue, None, None, **kwargs)
-        # Like states and actions, record tree decided policies
-        if type(states) != type(None):
-            self.states = deque(states, maxlen = max_queue)
-        if type(policies) != type(None):
-            self.policies = deque(policies, maxlen = max_queue)
-        else:
+        # Like actions and rewards, record tree decided policies and the winners
+        # If any one of the given sets is empty, set each to none
+        # self.states is set by parent initializers
+        if type(None) in [type(states), type(policies), type(winners)]:
             self.policies = deque(maxlen = max_queue)
-        if type(winners) != type(None):
-            self.winners = deque(winners, maxlen = max_queue)
-        else:
             self.winners = deque(maxlen = max_queue)
+        else:
+            self.states = deque(states, maxlen = max_queue)
+            self.policies = deque(policies, maxlen = max_queue)
+            self.winners = deque(winners, maxlen = max_queue)
         # Number of simulations to run on each move when playing
         self.play_simulations = play_simulations
         # Mode of acting to do
@@ -79,8 +78,11 @@ class QTree (Q):
             self.initialized = True
 
     def init_model(self, weights = None, biases = None):
+        # Parent initializer
         super(QTree, self).init_model(weights, biases)
+        # Policy head
         self._probabilities = tf.nn.softmax(self.y[:, 1:])
+        # Value head
         self._value = tf.tanh(self.y[:, 0])
 
     def _init_training_vars(self):
@@ -117,7 +119,7 @@ class QTree (Q):
                 # Updater (minimizer)
                 self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
                                                                  name = "update")
-                # Tensorboard
+                # Tensorboard saving operation
                 self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
@@ -130,49 +132,66 @@ class QTree (Q):
                                                                           name = "policy_loss"))
         tf.summary.scalar("Policy_loss", prob_loss)
         # L2 Regularization
+        # Initialize to zero
         self.l2 = 0.0
-        # Loss and Regularization
+        # Regularization (if beta was set by user)
         if self.beta != None:
             with tf.name_scope("regularization"):
                 self.l2 = self._l2_recurse(self.w)
                 tf.summary.scalar("L2", self.l2)
                 beta = tf.constant(self.beta)
+                # Full loss function (negative prob loss is built into the cross entropy function)
+            loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2), name = "loss_with_regularization")
         else:
-            beta = tf.constant(0.0)
-        # Full loss (negative prob loss is built into the cross entropy function)
-        loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2), name = "loss")
+            # Full loss (negative prob loss is built into the cross entropy function)
+            loss = tf.add(val_loss, prob_loss, name = "loss")
+        # Vefify real and finite
         loss = tf.verify_tensor_all_finite(loss, name = "FiniteVerify",
                                            msg = "Inf or NaN loss")
         tf.summary.scalar("Loss", loss)
         return loss
 
     def clear(self):
+        # Reset agent properties
         super(QTree, self).clear()
+        # Reset qtree specific properties
         self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen = self.max_queue)
 
     def policy(self, state):
+        # Pass a state to the model and get the policy head output
+        if type(state) == list:
+            feed = [np.reshape(s, -1) for s in state]
+        elif type(state) == np.ndarray:
+            feed = [np.reshape(state, -1)]
         probs = self._probabilities.eval(session = self.session,
-                                         feed_dict = {self.x: [np.reshape(state, -1)]})
+                                         feed_dict = {self.x: feed})
+        # If only one element passed in, return only one out
         if probs.size == self.layers[-1] - 1:
             return probs[0]
         return probs
 
     def get_Q(self, state):
+        # Get a policy and return a reshaped version
+        # This is needed for the general Q-based agent API
         return self.policy(state).reshape(state.shape)
 
     def value(self, state):
+        # Pass a state into the model and take value head output
+        #
         if type(state) == list:
             feed = [np.reshape(s, -1) for s in state]
         elif type(state) == np.ndarray:
             feed = [np.reshape(state, -1)]
         val = self._value.eval(session = self.session,
                                feed_dict = {self.x: feed})
+        # If only one element passed in, return only one out
         if val.size == 1:
             return val[0]
         return val
 
     def raw(self, state):
+        # Pass a state into the model and pull raw output
         if type(state) == list:
             feed = [np.reshape(s, -1) for s in state]
         elif type(state) == np.ndarray:
@@ -197,10 +216,10 @@ class QTree (Q):
                      self.winner_targets: WINNERS, self.learn_rate: learn_rate,
                      self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
-        #print(self.session.run(self.loss, feed_dict = feed_dict))
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
 
     def save_as_prob_model(self, name):
+        # Save the model only as a Q model
         layers = copy(self.layers)
         layers[-1] -= 1
         with open(name, "wb") as outFile:
@@ -212,12 +231,15 @@ class QTree (Q):
                  outFile)
 
     def train(self, **kwargs):
+        # Use trainer for training
         self.trainer.train(**kwargs)
 
     def add_episode(self, state, policy, value = 0):
+        # Add an episode to the episode queue
         self.episode.append((state, policy, value))
 
     def save_episode(self):
+        """ Add elements in the episode to memory """
         # If episode hasn't been used, do nothing
         if len(self.episode) == 0:
             return None
@@ -235,6 +257,7 @@ class QTree (Q):
         self.new_episode()
 
     def save_point(self, state, probs, winner):
+        # Save a point to the permenant memory
         self.states.append(state)
         self.policies.append(probs)
         self.winners.append(winner)
@@ -356,19 +379,17 @@ class QTreeTrainer (Trainer):
         }
 
     def train(self, **kwargs):
-        # Training loop: select memory replay and train
-        for _ in range(self.params["epochs"]):
-            # Randomly sample from memory
-            size = len(self.agent.states)
-            if size > self.params["replay_size"]:
-                indexes = sample(range(size), self.params["replay_size"])
-            else:
-                indexes = range(size)
-            # Train on this sample
-            self.offline([self.agent.states[i] for i in indexes],
-                         [self.agent.policies[i] for i in indexes],
-                         [self.agent.winners[i] for i in indexes],
-                         epochs = 1,  **kwargs)
+        # Randomly sample from memory
+        size = len(self.agent.states)
+        if size > self.params["replay_size"]:
+            indexes = sample(range(size), self.params["replay_size"])
+        else:
+            indexes = range(size)
+        # Train on this sample
+        self.offline([self.agent.states[i] for i in indexes],
+                     [self.agent.policies[i] for i in indexes],
+                     [self.agent.winners[i] for i in indexes],
+                     **kwargs)
 
     def offline(self, states = None, policies = None, winners = None, batch_size = None,
                 epochs = None, learn_rate = None, rotate = None, rotate_live = None):
