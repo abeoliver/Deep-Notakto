@@ -18,7 +18,8 @@ class Q (Agent):
     def __init__(self, layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
                  params = {"mode": "replay"}, max_queue = 100,
-                 epsilon_func = None, temp_func = None, **kwargs):
+                 epsilon_func = None, temp_func = None,
+                 activation_func="identity", activation_type="hidden", **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -48,6 +49,9 @@ class Q (Agent):
         self.gamma = gamma
         self.beta = beta
         self.clip_thresh = 10.0
+        self.activation_func_name = activation_func
+        self.activation_func = self.get_activation_function(activation_func)
+        self.activation_type = activation_type
         if epsilon_func == None and temp_func == None:
             self.deterministic = True
         else:
@@ -106,6 +110,14 @@ class Q (Agent):
             self.trainer = QTrainer(self, params = params, **kwargs)
             self.initialized = True
 
+    def get_activation_function(self, func):
+        func = func.lower()
+        if func == "sigmoid": return tf.sigmoid
+        elif func == "tanh": return tf.nn.tanh
+        elif func == "relu": return tf.nn.relu
+        elif func == "swish": return lambda x: tf.multiply(x, tf.sigmoid(x))
+        else: return tf.identity
+
     def init_model(self, weights = None, biases = None):
         """
         Randomly intitialize model, if given weights and biases, treat as a re-initialization
@@ -141,59 +153,59 @@ class Q (Agent):
     def _init_training_vars(self):
         """Initialize params procedure"""
         with self._graph.as_default():
-            with tf.name_scope("params"):
-                # Targets
-                self.q_targets = tf.placeholder(tf.float32,
-                                                shape = [None, self.layers[0]],
-                                                name = "q_targets")
-                # Learning rate
-                self.learn_rate = tf.placeholder(tf.float32, name = "learn_rate")
-                # Loss
-                self._loss = self._get_loss_function()
-                # Optimizer
-                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                    self.learn_rate,
-                                                                    name = "optimizer")
-                # Get gradients
-                self._gradients = self._optimizer.compute_gradients(self._loss)
-                # Verify finite and real
-                name = "FiniteGradientVerify"
-                grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
-                                                      name = name), v)
-                         for g, v in self._gradients]
-                # Clip gradients
-                self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
-                self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
-                                           for g, v in grads]
-                # Updater (minimizer)
-                self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
-                                                                 name = "update")
-                # Tensorboard
-                self.summary_op = tf.summary.merge_all()
+            # Targets
+            self.q_targets = tf.placeholder(tf.float32,
+                                            shape = [None, self.layers[0]],
+                                            name = "q_targets")
+            # Learning rate
+            self.learn_rate = tf.placeholder(tf.float32, name = "learn_rate")
+            # Loss
+            self._loss = self._get_loss_function()
+            # Optimizer
+            self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                self.learn_rate,
+                                                                name = "optimizer")
+            # Get gradients
+            self._gradients = self._optimizer.compute_gradients(self._loss)
+            # Verify finite and real
+            name = "FiniteGradientVerify"
+            grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
+                                                  name = name), v)
+                     for g, v in self._gradients]
+            # Clip gradients
+            self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
+            self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
+                                       for g, v in grads]
+            # Updater (minimizer)
+            self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
+                                                             name = "update")
+            # Tensorboard
+            self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
-        # Regular loss
-        data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
-                                  name="data_loss")
-        tf.summary.scalar("Data_loss", data_loss)
-        # Loss and Regularization
-        self.beta_ph = tf.placeholder(tf.float32, name="beta")
-        # L2 Regularization
-        if self.beta != None:
-            with tf.name_scope("regularization"):
-                self.l2 = self._l2_recurse(self.w)
-                tf.summary.scalar("L2", self.l2)
-                loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
-                                      name = "regularized_loss")
-        else:
-            loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
-        loss = tf.verify_tensor_all_finite(
-            tf.reduce_mean(loss, name = "loss"),
-            msg = "Inf or NaN loss",
-            name = "FiniteVerify"
-        )
-        tf.summary.scalar("Loss", loss)
-        return loss
+        with tf.name_scope("loss"):
+            # Regular loss
+            data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
+                                      name="data_loss")
+            tf.summary.scalar("Data_loss", data_loss)
+            # Loss and Regularization
+            self.beta_ph = tf.placeholder(tf.float32, name="beta")
+            # L2 Regularization
+            if self.beta != None:
+                with tf.name_scope("regularization"):
+                    self.l2 = self._l2_recurse(self.w)
+                    tf.summary.scalar("L2", self.l2)
+                    loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
+                                          name = "regularized_loss")
+            else:
+                loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
+            loss = tf.verify_tensor_all_finite(
+                tf.reduce_mean(loss, name = "loss"),
+                msg = "Inf or NaN loss",
+                name = "FiniteVerify"
+            )
+            tf.summary.scalar("Loss", loss)
+            return loss
 
     def _init_weights(self, w = None):
         """
@@ -252,15 +264,18 @@ class Q (Agent):
             (1, N) array - Output of the given layer (last layer outputs network output)
         """
         # Output of layer
-        out = tf.add(tf.matmul(inp, self.w[n], name="feedmul{}".format(n)), self.b[n],
-                     name="feedadd{}".format(n))
-        # Add to activations list
-        self.activation_layers.append(out)
+        out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
+                     name = "feedadd{}".format(n))
         # Base case (-2 because final layer is output and lists start at zero)
         if n == len(self.layers) - 2:
+            if self.activation_type.lower() == "all":
+                out = self.activation_func(out)
+            self.activation_layers.append(out)
             return out
+        # Add to activations list
+        self.activation_layers.append(out)
         # Continue recursion
-        return self._feed(out, n + 1)
+        return self._feed(self.activation_func(out), n + 1)
 
     def target(self, state, action, reward):
         """
@@ -403,7 +418,9 @@ class Q (Agent):
                          "params": self.params, "iterations": self.iteration,
                          "max_queue": self.max_queue,
                          "tensorboard_interval": self.trainer.tensorboard_interval,
-                         "tensorboard_path": self.trainer.tensorboard_path},
+                         "tensorboard_path": self.trainer.tensorboard_path,
+                         "activation_func": self.activation_func_name,
+                         "activation_type": self.activation_type},
                         outFile)
 
     def variable_summaries(self, var, name):
@@ -501,7 +518,7 @@ class Q (Agent):
         Parameters:
             board ((N, N) array) - Current board state
         Returns:
-            List of (N, N) arrays - AllActivated legal moves for the given board
+            List of (N, N) arrays - All legal moves for the given board
         Note:
             An almost identical function exists in the game environment but the
             agent must have an independent mehtod to generate possible moves in
@@ -509,7 +526,7 @@ class Q (Agent):
         """
         # Get board
         b = copy(board)
-        # AllActivated remaining moves
+        # All remaining moves
         remaining = []
         # Loop over both axes
         for i in range(b.shape[0]):

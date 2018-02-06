@@ -53,6 +53,8 @@ def play(env, a1, a2):
 	a1.save_episode()
 	a2.save_episode()
 	# Return winner
+	if observation["info"]["illegal"]:
+		return 2 - (env.turn % 2)
 	return env.turn % 2 + 1
 
 def tournament(env, a1, a2, games):

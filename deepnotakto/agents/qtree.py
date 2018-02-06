@@ -21,7 +21,8 @@ class QTree (Q):
                  initialize = True, classifier = None, iterations = 0,
                  params = {}, max_queue = 100, play_simulations = 10,
                  act_mode = "search", default_temp = 1, states = None,
-                 policies = None, winners = None, guided_explore = 1, **kwargs):
+                 policies = None, winners = None, guided_explore = 1,
+                 activation_func = "identity", activation_type = "hidden", **kwargs):
         # Get classifier
         if classifier == None:
             classifier = util.unique_classifier()
@@ -34,7 +35,8 @@ class QTree (Q):
             layers[-1] += 1
         # Call parent initializer
         super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
-                                    iterations, params, max_queue, None, None, **kwargs)
+                                    iterations, params, max_queue, None, None,
+                                    activation_func, activation_type, **kwargs)
         # Like actions and rewards, record tree decided policies and the winners
         # If any one of the given sets is empty, set each to none
         # self.states is set by parent initializers
@@ -88,68 +90,68 @@ class QTree (Q):
     def _init_training_vars(self):
         """Initialize params procedure"""
         with self._graph.as_default():
-            with tf.name_scope("params"):
-                # Targets
-                # Probabilities
-                self.prob_targets = tf.placeholder(tf.float32,
-                                                   shape = [None, self.layers[-1] - 1],
-                                                   name = "probability_targets")
-                # Winner
-                self.winner_targets = tf.placeholder(tf.float32, shape = [1, None],
-                                                     name = "winner_target")
-                # Learning rate
-                self.learn_rate = tf.placeholder(tf.float32)
-                # Loss
-                self._loss = self._get_loss_function()
-                # Optimizer
-                self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                    self.learn_rate,
-                                                                    name = "optimizer")
-                # Get gradients
-                self._gradients = self._optimizer.compute_gradients(self._loss)
-                # Verify finite and real
-                name = "FiniteGradientVerify"
-                grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
-                                                      name = name), v)
-                         for g, v in self._gradients]
-                # Clip gradients
-                self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
-                self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
-                                           for g, v in grads]
-                # Updater (minimizer)
-                self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
-                                                                 name = "update")
-                # Tensorboard saving operation
-                self.summary_op = tf.summary.merge_all()
+            # Targets
+            # Probabilities
+            self.prob_targets = tf.placeholder(tf.float32,
+                                               shape = [None, self.layers[-1] - 1],
+                                               name = "probability_targets")
+            # Winner
+            self.winner_targets = tf.placeholder(tf.float32, shape = [1, None],
+                                                 name = "winner_target")
+            # Learning rate
+            self.learn_rate = tf.placeholder(tf.float32)
+            # Loss
+            self._loss = self._get_loss_function()
+            # Optimizer
+            self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
+                                                                self.learn_rate,
+                                                                name = "optimizer")
+            # Get gradients
+            self._gradients = self._optimizer.compute_gradients(self._loss)
+            # Verify finite and real
+            name = "FiniteGradientVerify"
+            grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
+                                                  name = name), v)
+                     for g, v in self._gradients]
+            # Clip gradients
+            self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
+            self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
+                                       for g, v in grads]
+            # Updater (minimizer)
+            self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
+                                                             name = "update")
+            # Tensorboard saving operation
+            self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
-        # Winner / Value loss
-        val_loss = tf.reduce_sum(tf.square(self.winner_targets - self._value), name = "value_loss")
-        tf.summary.scalar("Value_loss", val_loss)
-        # Cross entropy for policy
-        prob_loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels = self.prob_targets,
-                                                                          logits = self.y[:, 1:],
-                                                                          name = "policy_loss"))
-        tf.summary.scalar("Policy_loss", prob_loss)
-        # L2 Regularization
-        # Initialize to zero
-        self.l2 = 0.0
-        # Regularization (if beta was set by user)
-        if self.beta != None:
-            with tf.name_scope("regularization"):
-                self.l2 = self._l2_recurse(self.w)
-                tf.summary.scalar("L2", self.l2)
-                beta = tf.constant(self.beta)
-                # Full loss function (negative prob loss is built into the cross entropy function)
-            loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2), name = "loss_with_regularization")
-        else:
-            # Full loss (negative prob loss is built into the cross entropy function)
-            loss = tf.add(val_loss, prob_loss, name = "loss")
-        # Vefify real and finite
-        loss = tf.verify_tensor_all_finite(loss, name = "FiniteVerify",
-                                           msg = "Inf or NaN loss")
-        tf.summary.scalar("Loss", loss)
-        return loss
+        with tf.name_scope("loss"):
+            # Winner / Value loss
+            val_loss = tf.reduce_sum(tf.square(self.winner_targets - self._value), name = "value_loss")
+            tf.summary.scalar("Value_loss", val_loss)
+            # Cross entropy for policy
+            prob_loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels = self.prob_targets,
+                                                                              logits = self.y[:, 1:],
+                                                                              name = "policy_loss"))
+            tf.summary.scalar("Policy_loss", prob_loss)
+            # L2 Regularization
+            # Initialize to zero
+            self.l2 = 0.0
+            # Regularization (if beta was set by user)
+            if self.beta != None:
+                with tf.name_scope("regularization"):
+                    self.l2 = self._l2_recurse(self.w)
+                    tf.summary.scalar("L2", self.l2)
+                    beta = tf.constant(self.beta)
+                    # Full loss function (negative prob loss is built into the cross entropy function)
+                loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2), name = "loss_with_regularization")
+            else:
+                # Full loss (negative prob loss is built into the cross entropy function)
+                loss = tf.add(val_loss, prob_loss, name = "loss")
+            # Vefify real and finite
+            loss = tf.verify_tensor_all_finite(loss, name = "FiniteVerify",
+                                               msg = "Inf or NaN loss")
+            tf.summary.scalar("Loss", loss)
+            return loss
 
     def clear(self):
         # Reset agent properties

@@ -27,10 +27,9 @@ class Env (object):
         self.shape = (size, size)
         if type(starting) == type(None):
             self.starting = np.zeros(self.shape, dtype = np.int8)
-            self.starting_turn = 0
         else:
             self.starting = starting
-            self.starting_turn = np.sum(self.starting)
+        self.starting_turn = np.sum(self.starting)
         self.reset()
         if rewards == None:
             self.rewards = {
@@ -156,7 +155,7 @@ class Env (object):
         Parameters:
             board ((N, N) array) - Current board state (default self.board)
         Returns:
-            List of (N, N) arrays - AllActivated legal moves for the given board
+            List of (N, N) arrays - All legal moves for the given board
         """
         # Get board
         if type(board) != np.ndarray:

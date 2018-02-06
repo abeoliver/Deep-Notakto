@@ -5,6 +5,7 @@
 import matplotlib.pyplot as plt
 from pickle import load
 import numpy as np
+from sklearn import linear_model
 
 def get_stats(name, add_suffix = True):
     with open(name + ".stats" if add_suffix else name, "rb") as f:
@@ -26,7 +27,7 @@ def group_stats_by_type(stats):
             final[t].append(stats[key][t])
     return final
 
-def plot_value(stats, values, fig_size = (10, 4), **kwargs):
+def plot_value(stats, values, fig_size = (10, 4), best_fit = True, **kwargs):
     if type(values) == str:
         values = [values]
     plt.figure(figsize = fig_size)
@@ -34,7 +35,14 @@ def plot_value(stats, values, fig_size = (10, 4), **kwargs):
         plt.subplot((len(values) // 2) + len(values) % 2,
                     2 if len(values) > 1 else 1,
                     i + 1)
-        plt.plot(stats["iteration"], stats[val], **kwargs)
+        best_fit_args = []
+        if best_fit:
+            model = linear_model.LinearRegression()
+            model.fit(np.array(stats["iteration"]).reshape(-1, 1),
+                      np.array(stats[val]).reshape(-1, 1))
+            best_fit_args.append([[0], [max(stats["iteration"])]])
+            best_fit_args.append(model.predict([[0], [max(stats["iteration"])]]))
+        plt.plot(stats["iteration"], stats[val], *best_fit_args, **kwargs)
         plt.ylabel(val.title().replace("_", " "))
     plt.show()
     return None
@@ -49,5 +57,8 @@ def measure(agent, **kwargs):
     # Size of raw predictions of zero board
     stats["zero_norm"] = np.linalg.norm(agent.raw(z))
     # Maximum probability on zero board
-    stats["zero_max"] = np.max(agent.policy(z))
+    policy = agent.policy(z)
+    stats["zero_max"] = np.max(policy)
+    # Mean of probabilities on zero board
+    stats["zero_mean"] = np.mean(policy)
     return stats
