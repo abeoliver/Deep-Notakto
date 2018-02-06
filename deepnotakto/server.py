@@ -38,8 +38,8 @@ player = 2
 
 # TRAINING VARS
 queue_size = 100
-learn_rate = .00005
-batch_size = 5
+learn_rate = .0005
+batch_size = 10
 replay_size = 40
 epochs = 10
 
@@ -49,7 +49,7 @@ tb_path = "/voltorb/abraoliv/tensorboard/"
 
 # SELF-PLAY VARS
 # Number of simulations to run for each move
-sims = 200
+sims = 100
 # Number of self-play games to run
 save_every = 20
 
@@ -60,6 +60,8 @@ evaluate = True
 games = 100
 # Evaluate against best
 eval_against_best = True
+# Best evaluation weight
+best_eval_weight = .3
 # Should save tournament statistics
 save_stats = True
 # File path for statistics
@@ -101,6 +103,7 @@ if __name__ == "__main__":
         print("Loading model...", end = " ")
         # Load an agent from the model path and with the given class definition
         agent = load_agent(model_path, QTree)
+        agent.change_param("learn_rate", learn_rate)
     else:
         print("Building model...", end = " ")
         # Create a new randomly-initialized agent with the given training/architecture parameters
@@ -168,8 +171,8 @@ if __name__ == "__main__":
 
             # Designate as best model if is better than previous model
             is_best = False
-            if ((q_wins / games) + .3 * ((best_wins_1 + best_wins_2) / games)) > prev_best_model_val:
-                prev_best_model_val = ((q_wins / games) + .3 * ((best_wins_1 + best_wins_2) / games))
+            if ((q_wins / games) + best_eval_weight * ((best_wins_1 + best_wins_2) / games)) > prev_best_model_val:
+                prev_best_model_val = ((q_wins / games) + best_eval_weight * ((best_wins_1 + best_wins_2) / games))
                 agent.save(best_model_path)
                 is_best = True
                 current_best = agent

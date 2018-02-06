@@ -364,8 +364,11 @@ class QTree (Q):
                   "play_simulations": self.play_simulations, "act_mode": self.act_mode,
                   "default_temp": self.default_temp, "states": self.states,
                   "policies": self.policies, "winners": self.winners,
+                  "guided_explore": self.guided_explore,
+                  "activation_func": self.activation_func_name,
+                  "activation_type": self.activation_type,
                   "tensorboard_interval": self.trainer.tensorboard_interval,
-                  "tensorboard_path": self.trainer.tensorboard_path},
+                  "tensorboard_path": self.trainer.tensorboard_path,},
                  outFile)
 
 class QTreeTrainer (Trainer):
