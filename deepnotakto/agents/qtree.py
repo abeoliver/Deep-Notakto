@@ -17,10 +17,11 @@ from deepnotakto.treesearch import GuidedNotaktoNode, search
 
 
 class QTree (Q):
-    def __init__(self, layers, gamma = .8, beta = None, name = None,
+    def __init__(self, game_size, hidden_layers, beta = None,
+                 name = None, player_as_input = False,
                  initialize = True, classifier = None, iterations = 0,
                  params = {}, max_queue = 100, play_simulations = 10,
-                 act_mode = "search", default_temp = 1, states = None,
+                 act_mode = "q", default_temp = 1, states = None,
                  policies = None, winners = None, guided_explore = 1,
                  activation_func = "identity", activation_type = "hidden", **kwargs):
         # Get classifier
@@ -29,14 +30,19 @@ class QTree (Q):
         # Get name
         if name == None:
             name = "QTree({})".format(classifier)
-        # Add value node if not added yet
-        layers = copy(layers)
-        if layers[0] == layers[-1]:
-            layers[-1] += 1
         # Call parent initializer
-        super(QTree, self).__init__(layers, gamma, beta, name, initialize, classifier,
+        super(QTree, self).__init__(game_size, hidden_layers, 0,
+                                    beta, name, False, classifier,
                                     iterations, params, max_queue, None, None,
-                                    activation_func, activation_type, **kwargs)
+                                    activation_func, activation_type)
+        # Add value node
+        self.layers[-1] += 1
+        # Add player node
+        self.player_as_input = player_as_input
+        if player_as_input:
+            self.layers[0] += 1
+        if initialize:
+            self.initialize(params = params, iterations = iterations, **kwargs)
         # Like actions and rewards, record tree decided policies and the winners
         # If any one of the given sets is empty, set each to none
         # self.states is set by parent initializers
@@ -160,14 +166,30 @@ class QTree (Q):
         self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen = self.max_queue)
 
+    def get_passable_state(self, state):
+        # If multiple states passed in
+        if type(state) == list:
+            if self.player_as_input:
+                feed = [np.concatenate((np.reshape(s, -1),
+                                        [1] if np.sum(s) % 2 == 0 else [-1]))
+                        for s in state]
+            else:
+                feed = [np.reshape(s, -1) for s in state]
+        # If only a single state passed in
+        elif type(state) == np.ndarray:
+            if self.player_as_input:
+                feed = [np.concatenate((np.reshape(state, -1),
+                                 [1] if np.sum(state) % 2 == 0 else [-1]))]
+            else:
+                feed = [np.reshape(state, -1)]
+        else:
+            raise(ValueError("'state' must be a list or an nd-array"))
+        return feed
+
     def policy(self, state):
         # Pass a state to the model and get the policy head output
-        if type(state) == list:
-            feed = [np.reshape(s, -1) for s in state]
-        elif type(state) == np.ndarray:
-            feed = [np.reshape(state, -1)]
         probs = self._probabilities.eval(session = self.session,
-                                         feed_dict = {self.x: feed})
+                                         feed_dict = {self.x: self.get_passable_state(state)})
         # If only one element passed in, return only one out
         if probs.size == self.layers[-1] - 1:
             return probs[0]
@@ -180,13 +202,8 @@ class QTree (Q):
 
     def value(self, state):
         # Pass a state into the model and take value head output
-        #
-        if type(state) == list:
-            feed = [np.reshape(s, -1) for s in state]
-        elif type(state) == np.ndarray:
-            feed = [np.reshape(state, -1)]
         val = self._value.eval(session = self.session,
-                               feed_dict = {self.x: feed})
+                               feed_dict = {self.x: self.get_passable_state(state)})
         # If only one element passed in, return only one out
         if val.size == 1:
             return val[0]
@@ -194,12 +211,8 @@ class QTree (Q):
 
     def raw(self, state):
         # Pass a state into the model and pull raw output
-        if type(state) == list:
-            feed = [np.reshape(s, -1) for s in state]
-        elif type(state) == np.ndarray:
-            feed = [np.reshape(state, -1)]
         out = self.y.eval(session = self.session,
-                          feed_dict = {self.x: feed})
+                          feed_dict = {self.x: self.get_passable_state(state)})
         if out.size == 1:
             return out[0]
         return out
@@ -211,7 +224,7 @@ class QTree (Q):
         else:
             WINNERS = np.array(winners)
         # Flatten states and probs
-        STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
+        STATES = np.array(self.get_passable_state(states), dtype = np.float32)
         PROBS = np.array([np.reshape(p, -1) for p in probs], dtype = np.float32)
         # Construct feed dictionary for the optimization step
         feed_dict = {self.x: STATES, self.prob_targets: PROBS,
@@ -219,18 +232,6 @@ class QTree (Q):
                      self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
-
-    def save_as_prob_model(self, name):
-        # Save the model only as a Q model
-        layers = copy(self.layers)
-        layers[-1] -= 1
-        with open(name, "wb") as outFile:
-            dump({"weights": [w.eval(session = self.session)[:, 1:] for w in self.w],
-                  "biases": [b.eval(session = self.session)[:, 1:] for b in self.b],
-                  "layers": layers, "gamma": self.gamma, "name": self.name,
-                  "beta": self.beta, "classifier": self.classifier,
-                  "params": self.params, "iterations": self.trainer.iteration},
-                 outFile)
 
     def train(self, **kwargs):
         # Use trainer for training
@@ -357,13 +358,15 @@ class QTree (Q):
         """
         # Remove epsilon function from the parameters for pickle
         with open(name, "wb") as outFile:
-            dump({"weights": self.get_weights(), "biases": self.get_biases(),
-                  "layers": self.layers, "gamma": self.gamma, "name": self.name,
+            dump({"game_size": self.size, "hidden_layers": self.layers[1:-1],
+                  "weights": self.get_weights(), "biases": self.get_biases(),
+                  "name": self.name,
                   "beta": self.beta, "classifier": self.classifier, "params": self.params,
                   "iterations": self.iteration, "max_queue": self.max_queue,
                   "play_simulations": self.play_simulations, "act_mode": self.act_mode,
                   "default_temp": self.default_temp, "states": self.states,
                   "policies": self.policies, "winners": self.winners,
+                  "player_as_input": self.player_as_input,
                   "guided_explore": self.guided_explore,
                   "activation_func": self.activation_func_name,
                   "activation_type": self.activation_type,
@@ -384,16 +387,19 @@ class QTreeTrainer (Trainer):
         }
 
     def train(self, **kwargs):
-        # Randomly sample from memory
+        self.train_on_set(self.agent.states, self.agent.policies, self.agent.winners)
+
+    def train_on_set(self, states, policies, winners, **kwargs):
+        # Randomly sample indecies from memory (aka memory replay)
         size = len(self.agent.states)
         if size > self.params["replay_size"]:
             indexes = sample(range(size), self.params["replay_size"])
         else:
             indexes = range(size)
         # Train on this sample
-        self.offline([self.agent.states[i] for i in indexes],
-                     [self.agent.policies[i] for i in indexes],
-                     [self.agent.winners[i] for i in indexes],
+        self.offline([states[i] for i in indexes],
+                     [policies[i] for i in indexes],
+                     [winners[i] for i in indexes],
                      **kwargs)
 
     def offline(self, states = None, policies = None, winners = None, batch_size = None,

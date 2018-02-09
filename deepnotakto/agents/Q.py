@@ -15,11 +15,11 @@ from deepnotakto.trainer import Trainer
 
 
 class Q (Agent):
-    def __init__(self, layers, gamma = .8, beta = None, name = None,
+    def __init__(self, game_size, hidden_layers, gamma = .8, beta = None, name = None,
                  initialize = True, classifier = None, iterations = 0,
                  params = {"mode": "replay"}, max_queue = 100,
                  epsilon_func = None, temp_func = None,
-                 activation_func="identity", activation_type="hidden", **kwargs):
+                 activation_func = "identity", activation_type = "hidden", **kwargs):
         """
         Initializes an Q learning agent
         Parameters:
@@ -42,20 +42,24 @@ class Q (Agent):
         # INITIALIZE
         # Parent initializer
         super(Q, self).__init__(params, max_queue = max_queue)
-        self.layers = layers
-        self.architecture = layers
-        self.size = int(np.sqrt(layers[0]))
+        # The length of the side of the board
+        self.size = game_size
+        # Put together the layers
+        self.layers = [self.size ** 2] + hidden_layers + [self.size ** 2]
         self.shape = [self.size, self.size]
         self.gamma = gamma
         self.beta = beta
         self.clip_thresh = 10.0
+        # Get the activation function
         self.activation_func_name = activation_func
         self.activation_func = self.get_activation_function(activation_func)
         self.activation_type = activation_type
+        # Decide if the agent is deterministic or not
         if epsilon_func == None and temp_func == None:
             self.deterministic = True
         else:
             self.deterministic = False
+        # Clean the exploration epsilon function
         if epsilon_func == None:
             self._epsilon_func = epsilon_func
         elif type(epsilon_func) in [float, int]:
@@ -64,6 +68,7 @@ class Q (Agent):
             self._epsilon_func = epsilon_func
         else:
             raise ValueError("This value is not permitted as an epsilon schedule")
+        # Clean the temperature scheduler
         if temp_func == None:
             self._temp_func = temp_func
         elif type(temp_func) in [float, int]:
@@ -412,8 +417,9 @@ class Q (Agent):
         """
         # Remove epsilon function from the parameters for pickle
         with open(name, "wb") as outFile:
-            pickle.dump({"weights": self.get_weights(), "biases": self.get_biases(),
-                         "layers": self.layers, "gamma": self.gamma, "name": self.name,
+            pickle.dump({"game_size": self.size, "hidden_layers": self.layers[1:-1],
+                         "weights": self.get_weights(), "biases": self.get_biases(),
+                         "gamma": self.gamma, "name": self.name,
                          "beta": self.beta, "classifier": self.classifier,
                          "params": self.params, "iterations": self.iteration,
                          "max_queue": self.max_queue,

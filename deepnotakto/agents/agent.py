@@ -16,8 +16,6 @@ class Agent (object):
         self.rewards = deque(maxlen = max_queue)
         self.episode = []
         self.max_queue = max_queue
-        # Must be named separately because of properties in the child classes
-        self.architecture = "N/A"
         self.name = "agent"
         self.trainer = Trainer(self, training)
 
