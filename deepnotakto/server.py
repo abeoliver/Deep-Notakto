@@ -4,10 +4,11 @@
 
 # THING TO TRY: GENERATE REPLAYS THEN TRAIN INSTEAD OF LIVE TRAININING
 
-import os
-from deepnotakto.train import train_model_with_tournament_evaluation
-from deepnotakto.util import load_agent
-from deepnotakto.agents.qtree import QTree
+import os, sys
+sys.path.insert(0, '..')
+from train import train_model_with_tournament_evaluation, train_generator_learner
+from util import load_agent
+from agents.qtree import QTree
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -31,10 +32,10 @@ player_as_input = True
 player = 2
 
 # TRAINING VARS
-queue_size = 100
+queue_size = 200
 learn_rate = .001
 batch_size = 10
-replay_size = 40
+replay_size = 50
 epochs = 10
 
 # Tensorboard checkpoint path and interval
@@ -86,11 +87,20 @@ if __name__ == "__main__":
         statistics = {}
 
     # Run the training loop
-    train_model_with_tournament_evaluation(agent = agent,
+    """train_model_with_tournament_evaluation(agent = agent,
                                            model_path = model_path,
                                            stats_path = stats_path,
                                            best_model_path = best_model_path,
                                            statistics = statistics,
                                            save_every = save_every,
                                            player = player,
-                                           games = games)
+                                           games = games,
+                                           sims = sims)"""
+    train_generator_learner(agent = agent,
+                            model_path = model_path,
+                            stats_path = stats_path,
+                            statistics = statistics,
+                            challenge_every = save_every,
+                            player = player,
+                            games = games,
+                            sims = sims)

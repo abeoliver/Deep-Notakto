@@ -409,6 +409,18 @@ class Q (Agent):
             print("******************")
         return summary
 
+    def duplicative_dict(self):
+        return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
+                 "weights": self.get_weights(), "biases": self.get_biases(),
+                 "gamma": self.gamma, "name": self.name,
+                 "beta": self.beta, "classifier": self.classifier,
+                 "params": self.params, "iterations": self.iteration,
+                 "max_queue": self.max_queue,
+                 "tensorboard_interval": self.trainer.tensorboard_interval,
+                 "tensorboard_path": self.trainer.tensorboard_path,
+                 "activation_func": self.activation_func_name,
+                 "activation_type": self.activation_type}
+
     def save(self, name):
         """
         Save the models parameters in a .npz file
@@ -417,17 +429,10 @@ class Q (Agent):
         """
         # Remove epsilon function from the parameters for pickle
         with open(name, "wb") as outFile:
-            pickle.dump({"game_size": self.size, "hidden_layers": self.layers[1:-1],
-                         "weights": self.get_weights(), "biases": self.get_biases(),
-                         "gamma": self.gamma, "name": self.name,
-                         "beta": self.beta, "classifier": self.classifier,
-                         "params": self.params, "iterations": self.iteration,
-                         "max_queue": self.max_queue,
-                         "tensorboard_interval": self.trainer.tensorboard_interval,
-                         "tensorboard_path": self.trainer.tensorboard_path,
-                         "activation_func": self.activation_func_name,
-                         "activation_type": self.activation_type},
-                        outFile)
+            pickle.dump(self.duplicative_dict(), outFile)
+
+    def copy(self):
+        return self.__class__(**self.duplicative_dict())
 
     def variable_summaries(self, var, name):
         """
@@ -552,14 +557,6 @@ class Q (Agent):
 
     def change_param(self, name, value):
         self.trainer.change_param(name, value)
-
-    def dual(self):
-        """
-        Creates a shell player whos params affects this agent
-        Returns:
-            Q Agent
-        """
-        return Dual(self)
 
     @property
     def epsilon(self):
@@ -693,19 +690,3 @@ class QTrainer (Trainer):
                                          [targets[b] for b in batch],
                                          learn_rate)
         return summary
-
-class Dual (Agent):
-    def __init__(self, host):
-        super(Dual, self).__init__()
-        self.host = host
-        self.training = self.host.training
-        self.name = host.name + "_dual"
-
-    def get_action(self, state):
-        return self.host.get_action(state)
-
-    def get_Q(self, state):
-        return self.host.get_Q(state)
-
-    def train(self, mode = ""):
-        self.host.train(mode, source_agent = self)

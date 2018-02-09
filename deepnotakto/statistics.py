@@ -62,3 +62,24 @@ def measure(agent, **kwargs):
     # Mean of probabilities on zero board
     stats["zero_mean"] = np.mean(policy)
     return stats
+
+def measure_generator_learner(generator, learner, **kwargs):
+    # Use the given stats as a starting point
+    stats = kwargs
+    # Zero board
+    z = np.zeros(generator.shape)
+    # Value of zero board
+    stats["gen_zero_val"] = generator.value(z)
+    stats["learn_zero_val"] = learner.value(z)
+    # Size of raw predictions of zero board
+    stats["gen_zero_norm"] = np.linalg.norm(generator.raw(z))
+    stats["learn_zero_norm"] = np.linalg.norm(learner.raw(z))
+    # Maximum probability on zero board
+    gen_policy = generator.policy(z)
+    learn_policy = learner.policy(z)
+    stats["gen_zero_max"] = np.max(gen_policy)
+    stats["learn_zero_max"] = np.max(learn_policy)
+    # Mean of probabilities on zero board
+    stats["gen_zero_mean"] = np.mean(gen_policy)
+    stats["learn_zero_mean"] = np.mean(learn_policy)
+    return stats

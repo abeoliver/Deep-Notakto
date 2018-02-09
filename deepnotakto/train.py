@@ -9,12 +9,13 @@ import os
 from time import time, localtime
 from pickle import dump, load
 from numpy import sqrt
+from copy import deepcopy
 
 from deepnotakto.util import load_agent, average_value, seconds_to_time
 from deepnotakto.agents.random_agent import RandomAgent
 from deepnotakto.environment import Env
 from deepnotakto.agents.qtree import QTree
-from deepnotakto.statistics import measure
+from deepnotakto.statistics import measure, measure_generator_learner
 
 def play(env, a1, a2):
 	a1.new_episode()
@@ -93,12 +94,9 @@ def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_
 		outputs.append("Iteration             {}".format(agent.iteration))
 
 		# Q-based evaluation tournament
-		agent.mode("q")
 		print("Q-based evaluation... ", end = "")
-		if player == 1:
-			q_wins = tournament(env, agent, opponent, games)[0]
-		else:
-			q_wins = tournament(env, opponent, agent, games)[1]
+		players = [agent, opponent]
+		q_wins = tournament(env, players[player - 1], players[2 - player], games)[player - 1]
 		print("Complete")
 		outputs.append("Q Evaluation          {}%".format(int(q_wins * 100 / games)))
 
@@ -120,7 +118,7 @@ def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_
 			outputs.append("BEST MODEL")
 
 		# Save statistics
-		statistics[agent.iteration] = measure(agent, q_wins = q_wins, time=time() - start,
+		statistics[agent.iteration] = measure(agent, q_wins = q_wins, time = time() - start,
 											  best = is_best, best_wins_1 = best_wins_1,
 											  best_wins_2 = best_wins_2, best_model_val = prev_best_model_val)
 
@@ -133,5 +131,75 @@ def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_
 		with open(stats_path, "wb") as f:
 			dump(statistics, f)
 
-def competitive_training():
-	pass
+def train_generator_learner(agent, statistics, model_path, stats_path, challenge_every = 1,
+							sims = 100, player = 1, games = 100):
+	# Environment to play in
+	env = Env(agent.size)
+	# Opponent to play against
+	opponent = RandomAgent(env)
+
+	# Distinguish generator from learner
+	generator = agent
+	learner = agent.copy()
+
+	# Begin console output with save location and time
+	clock = localtime(time())[3:5]
+	o = "\n\n-------- {} --------\nSaved as '{}'\nStarted at {} : {} {}\n".format(
+		agent.name, model_path, int(clock[0]) % 12 if clock[0] not in [0, 12] else 12,
+		str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
+	print(o)
+
+	# Start clock
+	start = time()
+
+	# Main training loop
+	while True:
+		# Run self play training algorithm
+		print("Self play... ", end = "")
+		for _ in range(challenge_every):
+			# Generate more target policies
+			generator.self_play(games = 1, simulations = sims, train = False)
+			# Train the learner
+			learner.trainer.train_on_set(generator.states, generator.policies, generator.winners)
+		print("Completed")
+
+		# Prepare console output
+		outputs = []
+		outputs.append("TIME PLACEHOLDER")
+		outputs.append("Iteration             {}".format(learner.iteration))
+
+		# Evaluate agents to decide future generator
+		print("Generator evaluation...", end = "")
+		players = [generator, opponent]
+		gen_wins = tournament(env, players[player - 1], players[2 - player], games)[player - 1]
+		print("Complete")
+		outputs.append("Generator Evaluation  {}%".format(int(gen_wins * 100 / games)))
+
+		print("Learner evaluation...", end = "")
+		players = [learner, opponent]
+		learn_wins = tournament(env, players[player - 1], players[2 - player], games)[player - 1]
+		print("Complete")
+		outputs.append("Learner Evaluation    {}%".format(int(learn_wins * 100 / games)))
+
+		# Promote learner if beats generator by more than 5%
+		switch = False
+		if learn_wins > (gen_wins + (.05 * games)) or learn_wins > (.95 * games):
+			generator = learner
+			# Create a copy of the learner to be the new learner
+			learner = learner.copy()
+			print("LEARNER OVERTAKE")
+			switch = True
+
+		# Save statistics
+		statistics[learner.iteration] = measure_generator_learner(
+			generator, learner, gen_wins = gen_wins, learn_wins = learn_wins,
+			time = time() - start, switch = switch)
+
+		# Fill in placeholders
+		outputs[0] = elapsed_time(start)
+		# Construct final output string
+		output = "".join(i + "\n" for i in outputs)
+		print(output)
+		# Save statistics
+		with open(stats_path, "wb") as f:
+			dump(statistics, f)

@@ -350,15 +350,8 @@ class QTree (Q):
         """ Returns the final weights responsible for the value head (most useful when no hidden layers """
         return self.get_weights(-1)[:, 0]
 
-    def save(self, name):
-        """
-        Save the models parameters in a .npz file
-        Parameters:
-            name (string) - File name for save file
-        """
-        # Remove epsilon function from the parameters for pickle
-        with open(name, "wb") as outFile:
-            dump({"game_size": self.size, "hidden_layers": self.layers[1:-1],
+    def duplicative_dict(self):
+        return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
                   "weights": self.get_weights(), "biases": self.get_biases(),
                   "name": self.name,
                   "beta": self.beta, "classifier": self.classifier, "params": self.params,
@@ -371,8 +364,7 @@ class QTree (Q):
                   "activation_func": self.activation_func_name,
                   "activation_type": self.activation_type,
                   "tensorboard_interval": self.trainer.tensorboard_interval,
-                  "tensorboard_path": self.trainer.tensorboard_path,},
-                 outFile)
+                  "tensorboard_path": self.trainer.tensorboard_path,}
 
 class QTreeTrainer (Trainer):
     def default_params(self):
