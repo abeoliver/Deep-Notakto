@@ -64,7 +64,7 @@ def get_move_dict(name, size):
 
 def record(filename, agent, quality = None):
     n = agent.name
-    a = str(agent.architecture)
+    a = str(agent.layers)
     g = str(agent.gamma)
     if agent.beta != None:
         b = str(agent.beta)

@@ -28,6 +28,7 @@ class Trainer (object):
         self.iteration = iterations
         self.training_params(params)
         # If recording, setup tensorboard functions
+        self.tensorboard_interval = tensorboard_interval
         if tensorboard_interval >= 1:
             if tensorboard_path == None:
                 tensorboard_path = "tensorboard/"
@@ -37,6 +38,7 @@ class Trainer (object):
             self.record = True
         else:
             self.record = False
+            self.tensorboard_path = None
 
     def change_param(self, name, value):
         self.params[name] = value
