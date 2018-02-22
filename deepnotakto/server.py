@@ -6,7 +6,8 @@
 
 import os, sys
 sys.path.insert(0, '..')
-from train import train_model_with_tournament_evaluation, train_generator_learner
+from train import train_model_with_tournament_evaluation,\
+    train_generator_learner, train_model_only_best
 from util import load_agent
 from agents.qtree import QTree
 
@@ -16,49 +17,45 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Should load model or not
 load_model = False
 # Iteration of trials
-version = 8
+version = 10
 # Agent name
-name = "Goal4x4_{}".format(version)
-model_path = "/voltorb/abraoliv/goal_4x4_{}".format(version)
+name = "{}".format(version)
+path = "/voltorb/abraoliv/4x4/"
 # Activation function
 activation_func = "relu"
 activation_type = "hidden"
 # Layer architecture
 game_size = 4
-hidden = [700, 500, 400, 300, 200]
-# Use player as an input
-player_as_input = True
+hidden = [1000, 500, 200]
 # Desired player evaluation
 player = 2
 
 # TRAINING VARS
-queue_size = 200
+queue_size = 300
 learn_rate = .001
 batch_size = 10
-replay_size = 50
+replay_size = 100
 epochs = 10
 
 # Tensorboard checkpoint path and interval
-tb_interval = 10
+tb_interval = 1
 tb_path = "/voltorb/abraoliv/tensorboard/"
 
 # SELF-PLAY VARS
 # Number of simulations to run for each move
-sims = 150
+sims = 2500
 # Number of self-play games to run
-save_every = 20
+save_every = 1
 
 # EVALUATION VARS
 # Number of tournament games to run
 games = 100
-# File path for statistics
-stats_path = "/voltorb/abraoliv/{}".format(name)
 
 if __name__ == "__main__":
     # Add file extensions
-    best_model_path = model_path + "_best.npz"
-    model_path += ".npz"
-    stats_path += ".stats"
+    model_path = path + name + ".npz"
+    best_model_path = path + name + "_best.npz"
+    stats_path = path + "{}.stats".format(name)
 
     # Create or load model
     if load_model:
@@ -71,7 +68,7 @@ if __name__ == "__main__":
         # Create a new randomly-initialized agent with the given training/architecture parameters
         params = {"rotate_live": True, "learn_rate": learn_rate, "batch_size": batch_size,
                   "replay_size": replay_size, "epochs": epochs}
-        agent = QTree(game_size, hidden, player_as_input = player_as_input,
+        agent = QTree(game_size, hidden, player_as_input = True,
                       params = params, max_queue = queue_size, name = name,
                       tensorboard_interval = tb_interval, tensorboard_path = tb_path,
                       activation_func = activation_func, activation_type = activation_type)
@@ -84,10 +81,10 @@ if __name__ == "__main__":
             statistics = load(f)
     else:
         # Create a new statistic set
-        statistics = {}
+        statistics = {"meta": {"games": games, "simulations": sims}}
 
     # Run the training loop
-    """train_model_with_tournament_evaluation(agent = agent,
+    train_model_with_tournament_evaluation(agent = agent,
                                            model_path = model_path,
                                            stats_path = stats_path,
                                            best_model_path = best_model_path,
@@ -95,12 +92,12 @@ if __name__ == "__main__":
                                            save_every = save_every,
                                            player = player,
                                            games = games,
-                                           sims = sims)"""
-    train_generator_learner(agent = agent,
+                                           sims = sims)
+    """train_generator_learner(agent = agent,
                             model_path = model_path,
                             stats_path = stats_path,
                             statistics = statistics,
                             challenge_every = save_every,
                             player = player,
                             games = games,
-                            sims = sims)
+                            sims = sims)"""

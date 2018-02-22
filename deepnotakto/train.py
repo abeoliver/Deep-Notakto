@@ -55,8 +55,91 @@ def elapsed_time(start):
 
 def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_path,
 										   best_model_path = None, save_every = 1,
-										   sims = 100, player = 1, games = 100):
+										   sims = 100, player = 1, games = 100, break_at_100 = True,
+										   console = True, iter_limit = 0):
 	""" Run a training loop with evaluation against a random opponent """
+	# Clean input
+	if best_model_path == None:
+		best_model_path = model_path + "_best"
+	# Environment to play in
+	env = Env(agent.size)
+	# Opponent to play against
+	opponent = RandomAgent(env)
+
+	# Value for comparing best model and current model
+	prev_best_model_val = -1
+	# Current best model
+	current_best = opponent
+
+	# Begin console output with save location and time
+	if console:
+		clock = localtime(time())[3:5]
+		o = "\n\n-------- {} --------\nSaved as '{}'\nStarted at {} : {} {}\n".format(
+			agent.name, model_path, int(clock[0]) % 12 if clock[0] not in [0, 12] else 12,
+			str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
+		print(o)
+
+	# Start clock
+	start = time()
+
+	# Main training loop
+	while True:
+		# Run self play training algorithm
+		if console: print("Self play... ", end = "")
+		# Generate games
+		agent.self_play(games = save_every, simulations = sims, train = False)
+		# Train after generation
+		agent.train()
+		if console: print("Completed")
+		# Save the model
+		agent.save(model_path)
+		# Prepare console output
+		outputs = []
+		outputs.append("TIME PLACEHOLDER")
+		outputs.append("Iteration             {}".format(agent.iteration))
+
+		# Q-based evaluation tournament
+		if console: print("Q-based evaluation... ", end = "")
+		players = [agent, opponent]
+		q_wins = tournament(env, players[player - 1], players[2 - player], games)[player - 1]
+		if console: print("Complete")
+		outputs.append("Q Evaluation          {}%".format(int(q_wins * 100 / games)))
+
+		# Designate as best model if is better than previous model
+		is_best = False
+		if (q_wins / games) > prev_best_model_val:
+			prev_best_model_val = q_wins / games
+			agent.save(best_model_path)
+			is_best = True
+			current_best = agent
+			outputs.append("BEST MODEL")
+
+		# Save statistics
+		statistics[agent.iteration] = measure(agent, q_wins = q_wins, time = time() - start,
+											  best = is_best, best_model_val = prev_best_model_val)
+
+		# Fill in placeholders
+		outputs[0] = elapsed_time(start)
+		# Construct final output string
+		output = "".join(i + "\n" for i in outputs)
+		if console: print(output)
+		# Save statistics
+		with open(stats_path, "wb") as f:
+			dump(statistics, f)
+
+		# End training if 100% achieved
+		if break_at_100 and q_wins == games:
+			return None
+
+		# End training if iteration limit is passed
+		if iter_limit > 0 and agent.iteration >= iter_limit:
+			return None
+
+def train_model_only_best(agent, statistics, model_path, stats_path,
+						  best_model_path = None, save_every = 1,
+						  sims = 100, player = 1, games = 100):
+	""" Run a training loop with evaluation against a random opponent
+	    but restart from best if a worse model is designed """
 	# Clean input
 	if best_model_path == None:
 		best_model_path = model_path + "_best"
@@ -84,7 +167,10 @@ def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_
 	while True:
 		# Run self play training algorithm
 		print("Self play... ", end = "")
-		agent.self_play(games = save_every, simulations = sims)
+		# Generate games
+		agent.self_play(games = save_every, simulations = sims, train = False)
+		# Train after generation
+		agent.train()
 		print("Completed")
 		# Save the model
 		agent.save(model_path)
@@ -100,27 +186,21 @@ def train_model_with_tournament_evaluation(agent, statistics, model_path, stats_
 		print("Complete")
 		outputs.append("Q Evaluation          {}%".format(int(q_wins * 100 / games)))
 
-		# Best Tournament
-		print("Against current best evaluation... ", end = "")
-		best_wins_1 = tournament(env, agent, current_best, games // 2)[0]
-		best_wins_2 = tournament(env, current_best, agent, games // 2)[1]
-		print("Complete")
-		outputs.append("Best Evaluation       {}%".format(
-			int((best_wins_1 + best_wins_2) * 100 / games)))
-
 		# Designate as best model if is better than previous model
 		is_best = False
 		if (q_wins / games) > prev_best_model_val:
 			prev_best_model_val = q_wins / games
 			agent.save(best_model_path)
 			is_best = True
-			current_best = agent
+			current_best = agent.copy()
 			outputs.append("BEST MODEL")
+		else:
+			# Reset to best model
+			agent = current_best
 
 		# Save statistics
 		statistics[agent.iteration] = measure(agent, q_wins = q_wins, time = time() - start,
-											  best = is_best, best_wins_1 = best_wins_1,
-											  best_wins_2 = best_wins_2, best_model_val = prev_best_model_val)
+											  best = is_best, best_model_val = prev_best_model_val)
 
 		# Fill in placeholders
 		outputs[0] = elapsed_time(start)
@@ -158,7 +238,7 @@ def train_generator_learner(agent, statistics, model_path, stats_path, challenge
 		print("Self play... ", end = "")
 		for _ in range(challenge_every):
 			# Generate more target policies
-			generator.self_play(games = 1, simulations = sims, train = False)
+			generator.self_play(games = 1, simulations = sims, train = True)
 			# Train the learner
 			learner.trainer.train_on_set(generator.states, generator.policies, generator.winners)
 		print("Completed")
@@ -203,3 +283,5 @@ def train_generator_learner(agent, statistics, model_path, stats_path, challenge
 		# Save statistics
 		with open(stats_path, "wb") as f:
 			dump(statistics, f)
+		# Save best model
+		generator.save(model_path)

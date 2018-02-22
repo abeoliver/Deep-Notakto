@@ -600,6 +600,15 @@ class Q (Agent):
         else:
             raise ValueError("This value is not permitted as a temperature schedule")
 
+    @property
+    def network_size(self):
+        total = 0
+        for w in self.get_weights():
+            total += w.size
+        for b in self.get_biases():
+            total += b.size
+        return total
+
 class QTrainer (Trainer):
     def default_params(self):
         return {

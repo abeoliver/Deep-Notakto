@@ -85,6 +85,7 @@ class Env (object):
             Observation Object
         Note:
             When an illegal move is attempted no move is executed
+            and the turn counter is not incremented
         """
         # Calculate move reward
         reward = self.reward(action)
