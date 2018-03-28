@@ -1,10 +1,11 @@
-# server.py
-# Abraham Oliver, 2017
-# Deep Notakto Project
-
-# THING TO TRY: GENERATE REPLAYS THEN TRAIN INSTEAD OF LIVE TRAININING
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: server.py                                                    #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 import os, sys
+from pickle import load
 sys.path.insert(0, '..')
 from train import train_model_with_tournament_evaluation,\
     train_generator_learner, train_model_only_best
@@ -17,7 +18,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Should load model or not
 load_model = False
 # Iteration of trials
-version = 10
+version = 26
 # Agent name
 name = "{}".format(version)
 path = "/voltorb/abraoliv/4x4/"
@@ -26,15 +27,15 @@ activation_func = "relu"
 activation_type = "hidden"
 # Layer architecture
 game_size = 4
-hidden = [1000, 500, 200]
+hidden = [200, 1000, 200]
 # Desired player evaluation
 player = 2
 
 # TRAINING VARS
-queue_size = 300
-learn_rate = .001
-batch_size = 10
-replay_size = 100
+queue_size = 400
+learn_rate = .005
+batch_size = 20
+replay_size = 200
 epochs = 10
 
 # Tensorboard checkpoint path and interval
@@ -43,13 +44,13 @@ tb_path = "/voltorb/abraoliv/tensorboard/"
 
 # SELF-PLAY VARS
 # Number of simulations to run for each move
-sims = 2500
+sims = 20000
 # Number of self-play games to run
 save_every = 1
 
 # EVALUATION VARS
 # Number of tournament games to run
-games = 100
+games = 1000
 
 if __name__ == "__main__":
     # Add file extensions

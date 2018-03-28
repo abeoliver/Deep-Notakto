@@ -1,6 +1,8 @@
-# visual.py
-# Abraham Oliver, 2017
-# Deep Notakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: visual.py                                                    #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 import sys
 

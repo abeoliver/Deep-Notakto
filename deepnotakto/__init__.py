@@ -1,6 +1,8 @@
-# __init__.py
-# Abraham Oliver, 2017
-# Deep-Notakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: __init__.py                                                  #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 from deepnotakto import util
 from deepnotakto.environment import Env

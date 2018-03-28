@@ -1,6 +1,8 @@
-# environment.py
-# Abraham Oliver, 2017
-# Deep-Nakato Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: environment.py                                               #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 from copy import copy
 

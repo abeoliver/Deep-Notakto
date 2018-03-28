@@ -1,6 +1,8 @@
-# agents/__init__.py
-# Abraham Oliver, 2017
-# Deep-Notakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: agents/__init__.py                                           #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 from deepnotakto.agents.agent import Agent
 from deepnotakto.agents.human import Human

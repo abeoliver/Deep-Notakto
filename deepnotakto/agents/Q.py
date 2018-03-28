@@ -1,7 +1,32 @@
-# Q.py
-# Abraham Oliver, 2017
-# Deep-Notakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: agents/Q.py                                                  #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
+# MIT License
+#
+# Copyright (c) 2018 Abraham Oliver
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Import dependencies
 import pickle
 from copy import copy
 from random import choice, shuffle
@@ -15,31 +40,56 @@ from deepnotakto.trainer import Trainer
 
 
 class Q (Agent):
-    def __init__(self, game_size, hidden_layers, gamma = .8, beta = None, name = None,
-                 initialize = True, classifier = None, iterations = 0,
-                 params = {"mode": "replay"}, max_queue = 100,
+    """
+    A Deep-Q agent
+
+    Methods:
+        initialize - Initialize model and tensorflow-specific attributes
+        get_activation_function - Get a desired tf-compatible activation func
+        target - Calculate the target policy for a given data point
+        get_action - Get the move vector to play on a given state
+        get_Q - Get a Q-value matrix (a square policy vector)
+        update - Run a training update over given training data
+        duplicative_dict - Get a dict that is sufficient to replicate the agent
+        save - Save the agent as a duplicative dict with a given name
+        copy - Create a copy of the agent
+        variable_summaries - Add tensorboard nodes for stats of a given var
+        get_layer - Get the output of desired layer instead of the final output
+        get_node_weights - Get the weight matrix for a given node
+        get_weights - Get all weight parameters
+        get_biases - Get all bias parameters
+        get_l2 - Get the L2 norm of the weight parameters
+        action_space - Get list of all possible moves
+        train - Use the trainer to train the model
+        training_params - Change the training parameter dictionary
+        change_param - Change an individual training parameter
+    """
+    def __init__(self, game_size, hidden_layers, gamma = .8, beta = None,
+                 name = None, initialize = True, classifier = None,
+                 iterations = 0, params = {"mode": "replay"}, max_queue = 100,
                  epsilon_func = None, temp_func = None,
-                 activation_func = "identity", activation_type = "hidden", **kwargs):
+                 activation_func = "identity", activation_type = "hidden",
+                 **kwargs):
         """
-        Initializes an Q learning agent
-        Parameters:
-            layers (int[]) - Layer architecture for the network
-            gamma (float [0, 1]) - Q-Learning hyperparameter
-            beta (float) - Regularization hyperparameter (if None, regularization
-                            is not implemented)
-            name (string) - Name of the agent and episodes model
-            initialize (bool) - Initialize the model randomly or not
-            classifier (string) - Unique classifier
-            iterations (int) - Current params (for epislon offset) iteration of this agent
-            params (dict) - Parameters for params
-            max_queue (int) - Maximum size of the replay queue
-            epsilon_func ([int -> float] OR float OR None) - Epsilon schedule
-            temp_func ([int -> float] OR float OR None) - Temperature parameter for softmax
-                            exploration. Passing a function sets the schedule and passing a
-                            float sets a constant schedule.
-            KWARGS are passed to the model initializer
+        Initialize a Q learning agent
+
+        Args:
+            game_size: (int) Side length of the boaed
+            hidden_layers: (int[]) Number of neurons in each hidden layer
+            gamma: (float) Q-learning bellman equation hyperparameter
+            beta: (float) L2 regularization hyperparameter
+            name: (string) Agent name
+            initialize: (bool) Run model and tensorflow initializer?
+            classifier: (string) Unique identifier for agent
+            iterations: (int) Current iteration of model
+            params: (dict) Training parameters
+            max_queue: (int) Maximum length of the memory queue
+            epsilon_func: (int -> float) Scheduler for exploration constant
+            temp_func: (float) (int -> float) Scheduler for temperature
+            activation_func: (string) Activaion func to be used on neurons
+            activation_type: ("all" or "hidden") Neurons to apply activation to
+            kwargs: (dict) Arguments to pass to trainer
         """
-        # INITIALIZE
         # Parent initializer
         super(Q, self).__init__(params, max_queue = max_queue)
         # The length of the side of the board
@@ -55,35 +105,35 @@ class Q (Agent):
         self.activation_func = self.get_activation_function(activation_func)
         self.activation_type = activation_type
         # Decide if the agent is deterministic or not
-        if epsilon_func == None and temp_func == None:
+        if epsilon_func is None and temp_func is None:
             self.deterministic = True
         else:
             self.deterministic = False
         # Clean the exploration epsilon function
-        if epsilon_func == None:
+        if epsilon_func is None:
             self._epsilon_func = epsilon_func
         elif type(epsilon_func) in [float, int]:
             self._epsilon_func = lambda x: epsilon_func
-        elif type(epsilon_func) == type(lambda x: None):
+        elif isinstance(epsilon_func, type(lambda: None)):
             self._epsilon_func = epsilon_func
         else:
-            raise ValueError("This value is not permitted as an epsilon schedule")
+            raise ValueError("Not a valid epsilon scheduler")
         # Clean the temperature scheduler
-        if temp_func == None:
+        if temp_func is None:
             self._temp_func = temp_func
         elif type(temp_func) in [float, int]:
             self._temp_func = lambda x: temp_func
-        elif type(temp_func) == type(lambda x: None):
+        elif isinstance(temp_func, type(lambda: None)):
             self._temp_func = temp_func
         else:
-            raise ValueError("This value is not permitted as a temperature schedule")
+            raise ValueError("Not a valid temperature scheduler")
         # If classifier is not set, get a new classifier
-        if classifier == None:
+        if classifier is None:
             self.classifier = util.unique_classifier()
         else:
             self.classifier = classifier
         # If a name is not set, set a default name
-        if name == None:
+        if name is None:
             self.name = "Q({})".format(self.classifier)
         else:
             self.name = name
@@ -96,19 +146,22 @@ class Q (Agent):
                    params = None, **kwargs):
         """
         Initialize the model
-        Parameters:
-            weights (List of (N, M) arrays with variable size) - Initial weights
-            biases (List of (1, N) arrays with variable size) - Initial biases
-            force (bool) - Initialize, even if already initialized
-            params (dict) - Training parameters
+
+        Args:
+            weights: (List of (N, M) arrays with variable size) Initial weights
+            biases: (List of (1, N) arrays with variable size) Initial biases
+            force: (bool) Initialize, even if already initialized
+            params: (dict) Training parameters
             KWARGS passed to trainer initializer
+        Returns:
+            None
         """
         if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
             self._graph = tf.Graph()
             self.session = tf.Session(graph = self._graph)
             # Initialize model
-            self.init_model(weights = weights, biases = biases)
+            self._init_model(weights = weights, biases = biases)
             # Initialize params variables like the loss and the optimizer
             self._init_training_vars()
             # Initialize trainer (passing the agent as a parameter)
@@ -116,49 +169,63 @@ class Q (Agent):
             self.initialized = True
 
     def get_activation_function(self, func):
+        """ Get a tensorflow-based activation function by name """
         func = func.lower()
-        if func == "sigmoid": return tf.sigmoid
-        elif func == "tanh": return tf.nn.tanh
-        elif func == "relu": return tf.nn.relu
-        elif func == "swish": return lambda x: tf.multiply(x, tf.sigmoid(x))
-        else: return tf.identity
+        if func == "sigmoid":
+            return tf.sigmoid
+        elif func == "tanh":
+            return tf.nn.tanh
+        elif func == "relu":
+            return tf.nn.relu
+        elif func == "swish":
+            return lambda x: tf.multiply(x, tf.sigmoid(x))
+        else:
+            return tf.identity
 
-    def init_model(self, weights = None, biases = None):
+    def _init_model(self, weights = None, biases = None):
         """
-        Randomly intitialize model, if given weights and biases, treat as a re-initialization
-        Parameters:
-            weights (List of (N, M) arrays) - Initial weight matricies
-            biases (List of (1, N) arrays) - Initial bias matricies
+        Randomly intitialize model, if given parameters, treat as a re-init
+
+        Args:
+            weights: (List of (N, M) arrays) Initial weight matricies
+            biases: (List of (1, N) arrays) Initial bias matricies
+        Returns:
+            None
         """
         with self._graph.as_default():
             with tf.name_scope("model"):
                 if not self.initialized:
+                    # Input placeholder
                     self.x = tf.placeholder(tf.float32,
                                             shape = [None, self.layers[0]],
                                             name = "inputs")
+                    # Initialize weights
                     self._init_weights(weights)
-                    # Tensorboard visualizations
+                    # Tensorboard visualizations for weight variables
                     for i, weight in enumerate(self.w):
                         self.variable_summaries(weight, "weight_" + str(i))
+                    # Initialize biases
                     self._init_biases(biases)
-                    # Tensorboard visualizations
+                    # Tensorboard visualizations for bias variables
                     for i, bias in enumerate(self.b):
                         self.variable_summaries(bias, "bias_" + str(i))
-                    # Predicted output
+                    # Prepare a list for individual layer outputs
                     self.activation_layers = []
+                    # Output prediction vector
                     self.y = self._feed(self.x)
                     self.initialized = True
                     self.session.run(tf.global_variables_initializer())
+                # Set node values instead of creating nodes if already init
                 else:
-                    if w != None:
+                    if w is not None:
                         self.set_weights(weights)
-                    if b != None:
+                    if b is not None:
                         self.set_biases(biases)
 
     def _init_training_vars(self):
-        """Initialize params procedure"""
+        """ Initialize training procedure """
         with self._graph.as_default():
-            # Targets
+            # Target placeholder
             self.q_targets = tf.placeholder(tf.float32,
                                             shape = [None, self.layers[0]],
                                             name = "q_targets")
@@ -167,27 +234,37 @@ class Q (Agent):
             # Loss
             self._loss = self._get_loss_function()
             # Optimizer
-            self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
-                                                                self.learn_rate,
-                                                                name = "optimizer")
+            self._optimizer = tf.train.GradientDescentOptimizer(
+                learning_rate = self.learn_rate, name = "optimizer")
             # Get gradients
             self._gradients = self._optimizer.compute_gradients(self._loss)
-            # Verify finite and real
+            # Verify finite and real and save in (gradient, variable) pairs
             name = "FiniteGradientVerify"
-            grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
-                                                  name = name), v)
+            grads = [(
+                         tf.verify_tensor_all_finite(
+                             g,
+                             msg = "Inf or NaN Gradients for {}".format(v.name),
+                             name = name),
+                         v
+                     )
                      for g, v in self._gradients]
-            # Clip gradients
-            self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
-            self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
+            # Clip gradients and save in (gradient, variable) pairs
+            self._clipping_threshold = tf.placeholder(tf.float32,
+                                                      name = "grad_clip_thresh")
+            self._clipped_gradients = [(
+                                           tf.clip_by_norm(
+                                               g, self._clipping_threshold),
+                                           v
+                                       )
                                        for g, v in grads]
             # Updater (minimizer)
-            self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
-                                                             name = "update")
+            self.update_op = self._optimizer.apply_gradients(
+                self._clipped_gradients, name = "update")
             # Tensorboard
             self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
+        """ Get the loss function """
         with tf.name_scope("loss"):
             # Regular loss
             data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
@@ -195,41 +272,49 @@ class Q (Agent):
             tf.summary.scalar("Data_loss", data_loss)
             # Loss and Regularization
             self.beta_ph = tf.placeholder(tf.float32, name="beta")
-            # L2 Regularization
-            if self.beta != None:
+            # L2 Regularization (if turned on by a non-None beta)
+            if self.beta is not None:
                 with tf.name_scope("regularization"):
                     self.l2 = self._l2_recurse(self.w)
                     tf.summary.scalar("L2", self.l2)
-                    loss = tf.reduce_mean(tf.add(data_loss, self.beta_ph * self.l2),
-                                          name = "regularized_loss")
+                    loss = tf.reduce_mean(
+                        tf.add(data_loss, self.beta_ph * self.l2),
+                        name = "regularized_loss")
+            # Otherwise do not a regularization term
             else:
                 loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
+            # Verify that the loss is finite and not NaN
             loss = tf.verify_tensor_all_finite(
                 tf.reduce_mean(loss, name = "loss"),
                 msg = "Inf or NaN loss",
                 name = "FiniteVerify"
             )
+            # Save to tensorboard summary
             tf.summary.scalar("Loss", loss)
             return loss
 
     def _init_weights(self, w = None):
         """
-        Initialize weights
+        Initialize weight matricies either randomly or with a given set
+
         Parameters:
-            w (List of (N, M) arrays) - Initial weight matricies
+            w: (List of (N, M) arrays) Initial weight matricies
+        Returns:
+            None
         """
-        #with self._graph.as_default():
-        if type(w) != type(None):
-            self.w = [tf.Variable(w[n], name="weights_{}".format(n),
+        # If weights are supplied, use those
+        if w is not None:
+            self.w = [tf.Variable(w[n], name = "weights_{}".format(n),
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
+        # Otherwise, initialize with a normal distribution
         else:
-            # NOTE: STDDEV IS HARD CODED
-            self.w = [tf.Variable(tf.random_normal([self.layers[n], self.layers[n + 1]],
-                                                   dtype = tf.float32, stddev = .2),
-                                  name="weights_{}".format(n))
+            self.w = [tf.Variable(tf.random_normal([self.layers[n],
+                                                    self.layers[n + 1]],
+                                                   stddev = .2),
+                                  name = "weights_{}".format(n))
                       for n in range(len(self.layers) - 1)]
-        # Get assign opss
+        # Get assignment operations
         self._weight_assign_ph = [tf.placeholder(tf.float32,
                                                  shape = [self.layers[n],
                                                           self.layers[n + 1]])
@@ -240,36 +325,42 @@ class Q (Agent):
     def _init_biases(self, b = None):
         """
         Initialize biases
-        Parameters:
-            b (List of (1, N) arrays) - Initial bias matricies
+
+        Args:
+            b: (List of (1, N) arrays) Initial bias matricies
+        Returns:
+            None
         """
-        # with self._graph.as_default():
-        if type(b) != type(None):
+        # If supplied, use given
+        if b is not None:
             self.b = [tf.Variable(b[n], name = "biases_{}".format(n),
                                   dtype = tf.float32)
                       for n in range(len(self.layers) - 1)]
+        # Otherwise, initialize with zeros
         else:
-            self.b = [tf.Variable(tf.zeros([1, self.layers[n + 1]], dtype = tf.float32),
+            self.b = [tf.Variable(tf.zeros([1, self.layers[n + 1]]),
                                   name = "biases_{}".format(n))
                       for n in range(len(self.layers) - 1)]
         # Get assign opss
         self._bias_assign_ph = [tf.placeholder(tf.float32,
-                                                 shape = [1, self.layers[n + 1]])
-                                  for n in range(len(self.layers) - 1)]
+                                               shape = [1, self.layers[n + 1]])
+                                for n in range(len(self.layers) - 1)]
         self._bias_assign = [self.b[n].assign(self._bias_assign_ph[n])
-                               for n in range(len(self.layers) - 1)]
+                             for n in range(len(self.layers) - 1)]
 
     def _feed(self, inp, n = 0):
         """
-        Recursively compute x.W_i + b_i for the layers of the network
-        Parameters:
-            inp ((1, N) array) - Input into the layer
-            n (int) - Current layer being applied
+        Recursively compute x_i.W_i + b_i for the layers of the network
+
+        Args:
+            inp: ((1, N) array) Input into the layer
+            n: (int) Current layer being calculated
         Returns:
-            (1, N) array - Output of the given layer (last layer outputs network output)
+            (1, N) array - Output of the given layer
         """
         # Output of layer
-        out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)), self.b[n],
+        out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)),
+                     self.b[n],
                      name = "feedadd{}".format(n))
         # Base case (-2 because final layer is output and lists start at zero)
         if n == len(self.layers) - 2:
@@ -285,55 +376,39 @@ class Q (Agent):
     def target(self, state, action, reward):
         """
         Calculate the target values for the network in a given situation
-        Parameters:
-            state ((N, N) array) - Environment state
-            action ((N, N) array) - Agents taken action
-            reward (float) - Scalar reward for the action on the state
+
+        Args:
+            state: ((N, N) array) Environment state
+            action: ((N, N) array) Agents taken action
+            reward: (float) Scalar reward for the action on the state
         Returns:
-            (N, N) array - Target Q matrix for the given state, action, reward pair
+            (N, N) array - Target Q matrix for the given data
         """
         # Apply action
         new_state = np.add(state, action)
         # Get current Q values
-        Q = np.reshape(np.copy(self.get_Q(state)), -1)
-        if False:
-            print("-------------------")
-            print("PLAYER :: {}".format(self.name))
-            print("State   Action")
-            def get_p(array):
-                s = str(array).split("\n ")
-                s[0] = s[0][1:]
-                s[-1] = s[-1][:-1]
-                return s
-            def two(x, y):
-                s = get_p(x)
-                a = get_p(y)
-                for i in range(len(s)):
-                    print(s[i] + "  " + a[i])
-            two(state, action)
-            print("Reward        -- {}".format(reward))
-            c = float(Q[np.argmax(action)])
-            print("Current Value -- {}".format(c))
+        q = np.reshape(np.copy(self.get_Q(state)), -1)
+        # If the game is over, return a new Q updated with the observed reward
         if self.is_over(new_state):
-            # Return a new Q vector updated by the Bellman equation
-            Q[np.argmax(action)] = reward
+            q[np.argmax(action)] = reward
+        # Otherwise, use the bellman equation and the next set of possible moves
         else:
             # Get max Q values after any move opponent could make
-            new_Q_max = []
+            new_q_max = []
             for move in self.action_space(new_state):
                 # Make the move
                 temp_state = np.add(move, new_state)
                 # Find the max Q value
-                new_Q_max.append(np.max(self.get_Q(temp_state)))
+                new_q_max.append(np.max(self.get_Q(temp_state)))
             # Get max of all Q values
-            maxQ = np.max(new_Q_max)
+            max_q = np.max(new_q_max)
             # Return a new Q vector updated by the Bellman equation
-            Q[np.argmax(action)] = reward + self.gamma * maxQ
+            q[np.argmax(action)] = reward + self.gamma * max_q
             if False:
-                print("Future        -- {}".format(maxQ))
-                print("Bellman       -- {}".format(Q[np.argmax(action)]))
-                print("Delta         -- {}".format(Q[np.argmax(action)] - c))
-        return np.reshape(Q, new_state.shape)
+                print("Future        -- {}".format(max_q))
+                print("Bellman       -- {}".format(q[np.argmax(action)]))
+                print("Delta         -- {}".format(q[np.argmax(action)] - c))
+        return np.reshape(q, new_state.shape)
 
     def get_action(self, state):
         """
@@ -392,7 +467,7 @@ class Q (Agent):
         STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
         TARGETS = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
         # Default to self.beta if no beta is given
-        if beta == None:
+        if beta is None:
             beta = self.beta
         # Construct feed dictionary for the optimization step
         feed_dict = {self.x: STATES, self.q_targets: TARGETS,
@@ -460,19 +535,15 @@ class Q (Agent):
         """Gets the weight matrix for a given node"""
         return np.reshape(self.get_weight(layer)[:, node], reshape)
 
-    def get_node_activations(self, inp, layer, node):
-        """Gets the activation matrix of node at a cerain input"""
-        pass
-
     def get_weights(self, index = None):
         """Gets all weight matricies"""
-        if index == None:
+        if index is None:
             return [self.w[i].eval(session = self.session) for i in range(len(self.w))]
         return self.w[index].eval(session = self.session)
 
     def get_biases(self, index = None):
         """Gets all bias matricies"""
-        if index == None:
+        if index is None:
             return [self.b[i].eval(session = self.session) for i in range(len(self.b))]
         return self.b[index].eval(session = self.session)
 
@@ -485,7 +556,7 @@ class Q (Agent):
             else:
                 raise (ValueError("Shape for weight #{} must be {}".format(
                     i, obj.w[i].shape)))
-        if index == None:
+        if index is None:
             for i in range(len(self.w)):
                 set_weight(self, i, new_w[i])
         else:
@@ -500,7 +571,7 @@ class Q (Agent):
             else:
                 raise (ValueError("Shape for bias #{} must be {}".format(
                     i, obj.w[i].shape)))
-        if index == None:
+        if index is None:
             for i in range(len(self.b)):
                 self.set_bias(i, new_b[i])
         else:
@@ -523,11 +594,11 @@ class Q (Agent):
         """Gets the L2 norm of the weights"""
         return self.l2.eval(session = self.session)
 
-    def action_space(self, board):
+    def action_space(self, state):
         """
         Returns a list of all possible moves (reguardless of win / loss)
         Parameters:
-            board ((N, N) array) - Current board state
+            state ((N, N) array) - Current board state
         Returns:
             List of (N, N) arrays - All legal moves for the given board
         Note:
@@ -535,15 +606,15 @@ class Q (Agent):
             agent must have an independent mehtod to generate possible moves in
             order to calculate target Q values
         """
-        # Get board
-        b = copy(board)
+        # Get state
+        s = copy(state)
         # All remaining moves
         remaining = []
         # Loop over both axes
-        for i in range(b.shape[0]):
-            for j in range(b.shape[1]):
+        for i in range(s.shape[0]):
+            for j in range(s.shape[1]):
                 # If there is an empty space, add the move to remaining moves
-                if b[i, j] == 0:
+                if s[i, j] == 0:
                     z = np.zeros(b.shape, dtype = np.int32)
                     z[i, j] = 1
                     remaining.append(z)
@@ -560,13 +631,13 @@ class Q (Agent):
 
     @property
     def epsilon(self):
-        if self._epsilon_func == None:
+        if self._epsilon_func is None:
             return 0
         return self._epsilon_func(self.iteration)
 
     @epsilon.setter
     def epsilon(self, epsilon_func):
-        if epsilon_func == None:
+        if epsilon_func is None:
             self._epsilon_func = epsilon_func
         elif type(epsilon_func) in [float, int]:
             self._epsilon_func = lambda x: epsilon_func
@@ -585,13 +656,13 @@ class Q (Agent):
 
     @property
     def temperature(self):
-        if self._temp_func == None:
+        if self._temp_func is None:
             return 0
         return self._temp_func(self.iteration)
 
     @temperature.setter
     def temperature(self, temp_func):
-        if temp_func == None:
+        if temp_func is None:
             self._temp_func = temp_func
         elif type(temp_func) in [float, int]:
             self._temp_func = lambda x: temp_func
@@ -645,15 +716,15 @@ class QTrainer (Trainer):
             If states, actions, and rewards are None, full history used
         """
         # Default to defaults if parameters not given
-        if learn_rate == None:
+        if learn_rate is None:
             learn_rate = self.params["learn_rate"]
-        if rotate == None:
+        if rotate is None:
             rotate = self.params["rotate"]
-        if epochs == None:
+        if epochs is None:
             epochs = self.params["epochs"]
-        if batch_size == None:
+        if batch_size is None:
             batch_size = self.params["batch_size"]
-        if states == None or actions == None or rewards == None:
+        if states is None or actions is None or rewards is None:
             states = self.agent.states
             actions = self.agent.actions
             rewards = self.agent.rewards
@@ -683,7 +754,7 @@ class QTrainer (Trainer):
             learn_rate (float) - Learning rate
         """
         # Default learning rate if none provided
-        if learn_rate == None:
+        if learn_rate is None:
             learn_rate = self.params["learn_rate"]
         # Batching
         # Shuffle all indicies

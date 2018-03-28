@@ -1,6 +1,8 @@
-# statistics.py
-# Abraham Oliver, 2018
-# Deep-Notakto
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: statistics.py                                                #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 import matplotlib.pyplot as plt
 from pickle import load

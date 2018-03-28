@@ -1,6 +1,8 @@
-# util.py
-# Abraham Oliver, 2017
-# Deep Notakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: util.py                                                      #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 import numpy as np
 import pickle, hashlib

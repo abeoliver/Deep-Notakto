@@ -1,7 +1,10 @@
-# qtree.py
-# Abraham Oliver, 2017
-# DeepNotakto Project
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: agents/qtree.py                                              #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
+# Import dependencies
 from collections import deque
 from copy import copy
 from pickle import dump
@@ -17,17 +20,59 @@ from deepnotakto.treesearch import GuidedNotaktoNode, search
 
 
 class QTree (Q):
+    """
+    An agent using Silver et al's AlphaZero algorithm for training and eval
+    
+    Methods:
+        initialize - Initialize model and tensorflow-specific attributes
+        clear - Reset the agent
+        get_passable_state - Clean a given state and return a valid model input
+        policy - Calculuate the policy for a given state
+        get_Q - Get a Q-value matrix (a square policy vector)
+        value - Calculate the policy for a given state
+        raw - Get the raw output from the model after passing a given state
+        update - Run a training update over given training data
+        train - Use the trainer to train the model
+        add_episode - Add a given state etc. tuple to the current episode
+        save_episode - Save episode to the memory queue (trains if requested)
+        save_point - Save a given state-policy-winner to the memory queue
+        self_play - Run games of self play to generate training data
+        act - Act on an evironment
+        duplicative_dict - Get a dict that is sufficient to replicate the agent
+    """
     def __init__(self, game_size, hidden_layers, beta = None,
-                 name = None, player_as_input = False,
+                 name = None, player_as_input = True,
                  initialize = True, classifier = None, iterations = 0,
-                 params = {}, max_queue = 100, play_simulations = 10,
-                 act_mode = "q", default_temp = 1, states = None,
+                 params = {}, max_queue = 100, play_simulations = 1000,
+                 mode = "q", default_temp = 1, states = None,
                  policies = None, winners = None, guided_explore = 1,
                  activation_func = "identity", activation_type = "hidden", **kwargs):
-        # Get classifier
+        """
+        :param game_size: (int) Side length of the boaed
+        :param hidden_layers: (int[]) Number of neurons in each respective hidden layer
+        :param beta: (float) L2 regularization hyperparameter
+        :param name: (string) Agent name
+        :param player_as_input: (bool) Pass the current player as part of input?
+        :param initialize: (bool) Run model and tensorflow initializer?
+        :param classifier: (string) Unique identifier for agent
+        :param iterations: (int) Current iteration of model
+        :param params: (dict) Training parameters
+        :param max_queue: (int) Maximum length of the memory queue
+        :param play_simulations: (int) Defult number of simulations per move
+        :param mode: ("q" or "search") Method for move choosing
+        :param default_temp: (float) Default temperature hyperparameter
+        :param states: (nd-array[]) Memory queue of states
+        :param policies: (nd-array[]) Memory queue of policies
+        :param winners: (int[]) Memory queue of winners
+        :param guided_explore: (float) Treesearch exploration hyperparameter
+        :param activation_func: (string) Activaion function to be used on neurons
+        :param activation_type: ("all" or "hidden") Neurons to apply activation function to
+        :param kwargs: (dict) Arguments to pass to trainer
+        """
+        # Get classifier if none given
         if classifier == None:
             classifier = util.unique_classifier()
-        # Get name
+        # Get name if never given
         if name == None:
             name = "QTree({})".format(classifier)
         # Call parent initializer
@@ -37,15 +82,17 @@ class QTree (Q):
                                     activation_func, activation_type)
         # Add value node
         self.layers[-1] += 1
-        # Add player node
+        # Add player as input node
         self.player_as_input = player_as_input
         if player_as_input:
             self.layers[0] += 1
+        # Run model initializer
         if initialize:
             self.initialize(params = params, iterations = iterations, **kwargs)
+
         # Like actions and rewards, record tree decided policies and the winners
         # If any one of the given sets is empty, set each to none
-        # self.states is set by parent initializers
+        # Note: self.states is set by parent initializers
         if type(None) in [type(states), type(policies), type(winners)]:
             self.policies = deque(maxlen = max_queue)
             self.winners = deque(maxlen = max_queue)
@@ -53,83 +100,92 @@ class QTree (Q):
             self.states = deque(states, maxlen = max_queue)
             self.policies = deque(policies, maxlen = max_queue)
             self.winners = deque(winners, maxlen = max_queue)
-        # Number of simulations to run on each move when playing
+
         self.play_simulations = play_simulations
-        # Mode of acting to do
-        self.act_mode = act_mode
-        # Default policy temperature
+        self._act_mode = mode
         self.default_temp = default_temp
-        # Exploration constant for guided search
         self.guided_explore = guided_explore
 
     def initialize(self, weights = None, biases = None, force = False,
                    params = None, **kwargs):
         """
         Initialize the model
-        Parameters:
-            weights (List of (N, M) arrays with variable size) - Initial weights
-            biases (List of (1, N) arrays with variable size) - Initial biases
-            force (bool) - Initialize, even if already initialized
-            params (dict) - Training parameters
-            KWARGS passed to trainer initializer
+        :param weights: (nd-array[]) Initial weights
+        :param biases: (nd-arrayp[]) Initial biases
+        :param force: (bool) Should force initialize even if already initialized?
+        :param params: (dict) Training parameters
+        :param kwargs: (dict) Arguments to pass to trainer
+        :return: (void)
         """
         if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
             self._graph = tf.Graph()
             self.session = tf.Session(graph = self._graph)
             # Initialize model
-            self.init_model(weights = weights, biases = biases)
-            # Initialize params variables like the loss and the optimizer
+            self._init_model(weights = weights, biases = biases)
+            # Initialize graph nodes such as loss and an optimizer
             self._init_training_vars()
             # Initialize trainer (passing the agent as a parameter)
             self.trainer = QTreeTrainer(self, params = params, **kwargs)
             self.initialized = True
 
-    def init_model(self, weights = None, biases = None):
+    def _init_model(self, weights = None, biases = None):
+        """
+        Initialize the neural network with given or random weights and biases
+        :param weights: (nd-array[]) Initial weights
+        :param biases: (nd-arrayp[]) Initial biases
+        :return: (void)
+        """
         # Parent initializer
-        super(QTree, self).init_model(weights, biases)
+        super(QTree, self)._init_model(weights, biases)
         # Policy head
         self._probabilities = tf.nn.softmax(self.y[:, 1:])
         # Value head
         self._value = tf.tanh(self.y[:, 0])
 
     def _init_training_vars(self):
-        """Initialize params procedure"""
+        """
+        Initialize computational graph nodes for training procedure
+        :return: (void)
+        """
         with self._graph.as_default():
-            # Targets
-            # Probabilities
+            # Target probabilities
             self.prob_targets = tf.placeholder(tf.float32,
                                                shape = [None, self.layers[-1] - 1],
                                                name = "probability_targets")
-            # Winner
+            # Target values
             self.winner_targets = tf.placeholder(tf.float32, shape = [1, None],
                                                  name = "winner_target")
-            # Learning rate
+            # SGD learning rate
             self.learn_rate = tf.placeholder(tf.float32)
-            # Loss
+            # SGD loss
             self._loss = self._get_loss_function()
-            # Optimizer
+            # SGD Optimizer
             self._optimizer = tf.train.GradientDescentOptimizer(learning_rate =
                                                                 self.learn_rate,
                                                                 name = "optimizer")
-            # Get gradients
+            # Get gradients for clipping
             self._gradients = self._optimizer.compute_gradients(self._loss)
             # Verify finite and real
             name = "FiniteGradientVerify"
             grads = [(tf.verify_tensor_all_finite(g, msg = "Inf or NaN Gradients for {}".format(v.name),
                                                   name = name), v)
                      for g, v in self._gradients]
-            # Clip gradients
+            # Clip gradients according to threshold
             self._clipping_threshold = tf.placeholder(tf.float32, name="grad_clip_thresh")
             self._clipped_gradients = [(tf.clip_by_norm(g, self._clipping_threshold), v)
                                        for g, v in grads]
-            # Updater (minimizer)
+            # Update operation (minimizer)
             self.update_op = self._optimizer.apply_gradients(self._clipped_gradients,
                                                              name = "update")
             # Tensorboard saving operation
             self.summary_op = tf.summary.merge_all()
 
     def _get_loss_function(self):
+        """
+        Design and produce the loss function for gradient descent
+        :return: (nd-array[] -> float)
+        """
         with tf.name_scope("loss"):
             # Winner / Value loss
             val_loss = tf.reduce_sum(tf.square(self.winner_targets - self._value), name = "value_loss")
@@ -160,64 +216,100 @@ class QTree (Q):
             return loss
 
     def clear(self):
-        # Reset agent properties
+        """
+        Reset agent properties
+        :return: (void)
+        """
         super(QTree, self).clear()
         # Reset qtree specific properties
         self.policies = deque(maxlen = self.max_queue)
         self.winners = deque(maxlen = self.max_queue)
 
     def get_passable_state(self, state):
-        # If multiple states passed in
+        """
+        Prepare a feeding tensor for the computation graph of the model
+        :param state: (nd-array or nd-array[]) State or states to clean for network feed
+        :return: (nd-array or nd-array[]) State or states fit to be passed through network
+        """
+        # If multiple states are passed in
         if type(state) == list:
+            # Add current player if needed to each state and flatten each state
             if self.player_as_input:
                 feed = [np.concatenate((np.reshape(s, -1),
                                         [1] if np.sum(s) % 2 == 0 else [-1]))
                         for s in state]
             else:
+                # Flatten each state
                 feed = [np.reshape(s, -1) for s in state]
         # If only a single state passed in
         elif type(state) == np.ndarray:
+            # Add current player if needed and flatten state
             if self.player_as_input:
                 feed = [np.concatenate((np.reshape(state, -1),
                                  [1] if np.sum(state) % 2 == 0 else [-1]))]
             else:
+                # Flatten state
                 feed = [np.reshape(state, -1)]
         else:
-            raise(ValueError("'state' must be a list or an nd-array"))
+            raise(ValueError("'state' must be a list of nd-arrays or an nd-array"))
         return feed
 
     def policy(self, state):
-        # Pass a state to the model and get the policy head output
+        """
+        Pass a state to the model and get the policy head output
+        :param state: (nd-array or nd-array[]) State or states to feed to network
+        :return: (nd-array or nd-array[]) Policy or policies for given state(s)
+        """
         probs = self._probabilities.eval(session = self.session,
                                          feed_dict = {self.x: self.get_passable_state(state)})
-        # If only one element passed in, return only one out
+        # If only one state passed in, return only one instead of one-element list
         if probs.size == self.layers[-1] - 1:
             return probs[0]
         return probs
 
     def get_Q(self, state):
-        # Get a policy and return a reshaped version
-        # This is needed for the general Q-based agent API
+        """
+        Get a policy and return a reshaped version
+        Note: Needed for the general Q-based-agent API
+        :param state: (nd-array or nd-array[]) State or states to feed to network
+        :return: (nd-array or nd-array[]) Q-matrix or Q-matricies for given state(s)
+        """
         return self.policy(state).reshape(state.shape)
 
     def value(self, state):
-        # Pass a state into the model and take value head output
+        """
+        Pass a state into the model and take value head output
+        :param state: (nd-array or nd-array[]) State or states to feed to network
+        :return: (float or float[]) Value(s) for given state(s)
+        """
         val = self._value.eval(session = self.session,
                                feed_dict = {self.x: self.get_passable_state(state)})
-        # If only one element passed in, return only one out
+        # If only one state passed in, return only one instead of one-element list
         if val.size == 1:
             return val[0]
         return val
 
     def raw(self, state):
-        # Pass a state into the model and pull raw output
+        """
+        Pass a state into the model and get the raw output from the network
+        :param state: (nd-array or nd-array[]) State or states to feed to network
+        :return: (nd-array or nd-array[]) Output(s) for given state(s)
+        """
         out = self.y.eval(session = self.session,
                           feed_dict = {self.x: self.get_passable_state(state)})
+        # If only one state passed in, return only one instead of one-element list
         if out.size == 1:
             return out[0]
         return out
 
-    def update(self, states, probs, winners, learn_rate = .01):
+    def update(self, states, policies, winners, learn_rate = .01):
+        """
+        Update the model with a given set of data
+        :param states: (nd-array[]) States to train over
+        :param policies: (nd-array[]) Policies to train over
+        :param winners: (int[]) Winners to train over
+        :param learn_rate: (float) Learning rate for SGD
+        :return: (Tensorboard Summary) Summary of training process"""
         # Clean winner input
         if type(winners) == list:
             WINNERS = np.array([winners])
@@ -225,34 +317,46 @@ class QTree (Q):
             WINNERS = np.array(winners)
         # Flatten states and probs
         STATES = np.array(self.get_passable_state(states), dtype = np.float32)
-        PROBS = np.array([np.reshape(p, -1) for p in probs], dtype = np.float32)
+        POLICIES = np.array([np.reshape(p, -1) for p in policies], dtype = np.float32)
         # Construct feed dictionary for the optimization step
-        feed_dict = {self.x: STATES, self.prob_targets: PROBS,
+        feed_dict = {self.x: STATES, self.prob_targets: POLICIES,
                      self.winner_targets: WINNERS, self.learn_rate: learn_rate,
                      self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
         return self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
 
     def train(self, **kwargs):
-        # Use trainer for training
+        """
+        Run a training process with the trainer
+        :param kwargs: (dict) Arguments for trainer
+        :return: (void)
+        """
         self.trainer.train(**kwargs)
 
     def add_episode(self, state, policy, value = 0):
-        # Add an episode to the episode queue
+        """
+        Add a state-policy-value data point to the current episode
+        :param state: (nd-array) Game state
+        :param policy: (nd-array) Policy used
+        :param value: (float) Value or winner
+        :return: (void)
+        """
         self.episode.append((state, policy, value))
 
     def save_episode(self):
-        """ Add elements in the episode to memory """
+        """
+        Add elements in the episode to memory
+        :return: (void)
+        """
         # If episode hasn't been used, do nothing
         if len(self.episode) == 0:
             return None
         # Get winner
         winner = 1 if self.episode[-1][2] == 0 else -1
         # Loop through all time steps and add them to memory with the correct winner
+        # Winner is assumed to be the value of the final datapoint in the episode
         for s, p, _ in self.episode:
-            self.states.append(s)
-            self.policies.append(p)
-            self.winners.append(winner)
+            self.save_point(s, p, winner)
         # Train if requested
         if self.params["train_live"]:
             self.train()
@@ -260,12 +364,28 @@ class QTree (Q):
         self.new_episode()
 
     def save_point(self, state, probs, winner):
-        # Save a point to the permenant memory
+        """
+        Save a data point to the memory queue
+        Note: use for self-play generated data points
+        :param state: (nd-array) Board state
+        :param probs: (nd-array) Probability distribution
+        :param winner: (int) Winner of game
+        :return: (void)
+        """
         self.states.append(state)
         self.policies.append(probs)
         self.winners.append(winner)
 
     def self_play(self, games, simulations, save_every = 0, save_name = None, train = True):
+        """
+        Runs games of self play for training data generation
+        :param games: (int) Number of games to play
+        :param simulations: (int) Number of simulations to run per move
+        :param save_every: (int) Number of games to save after
+        :param save_name: (string) Filename to save agent under
+        :param train: (bool) Train after every game?
+        :return: (void)
+        """
         # Clean input
         save_every = int(save_every)
         games = int(games)
@@ -314,15 +434,31 @@ class QTree (Q):
                 self.save(save_name)
 
     def act(self, env, mode = None):
+        """
+        Act on an environment
+        :param env: (Environment) Game environment to play on
+        :param mode: ("q" or "search") Desired method for choosing an action
+        :return: (dict) Observation from environment
+        """
         if mode == None:
-            mode = self.act_mode
-        return {"q": self.q_act, "search" : self.search_act}[mode](env)
+            mode = self.mode
+        # Select a mode to use and get move
+        return {"q": self._q_act, "search" : self._search_act}[mode](env)
 
-    def q_act(self, env):
-        """ Gets a move for a given environment, plays it, and returns the result"""
+    def _q_act(self, env):
+        """
+        Chooses a move to play based on a policy
+        :param env: (Environment) Environement to play on
+        :return: (dict) Observation from environment
+        """
         return env.act(self.get_action(env.observe()))
 
-    def search_act(self, env):
+    def _search_act(self, env):
+        """
+        Chooses a move to play by the result of a tree search
+        :param env: (Environment) Environement to play on
+        :return: (dict) Observation from environment
+        """
         # Start with a root node
         state = env.observe()
         node = GuidedNotaktoNode(state, self)
@@ -342,21 +478,26 @@ class QTree (Q):
         # Play the move and return the result
         return env.act(move)
 
+    @property
+    def mode(self):
+        return self._act_mode
+
+    @mode.setter
     def mode(self, new):
         if new.lower() in ["q", "search"]:
-            self.act_mode = new.lower()
-
-    def value_head(self):
-        """ Returns the final weights responsible for the value head (most useful when no hidden layers """
-        return self.get_weights(-1)[:, 0]
+            self._act_mode = new.lower()
 
     def duplicative_dict(self):
+        """
+        Get a dicionary that contains all information needed to replicate agent
+        :return: (dict) Information needed to replicate an agent
+        """
         return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
                   "weights": self.get_weights(), "biases": self.get_biases(),
                   "name": self.name,
                   "beta": self.beta, "classifier": self.classifier, "params": self.params,
                   "iterations": self.iteration, "max_queue": self.max_queue,
-                  "play_simulations": self.play_simulations, "act_mode": self.act_mode,
+                  "play_simulations": self.play_simulations, "mode": self.mode,
                   "default_temp": self.default_temp, "states": self.states,
                   "policies": self.policies, "winners": self.winners,
                   "player_as_input": self.player_as_input,

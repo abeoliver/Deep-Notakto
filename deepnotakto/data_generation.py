@@ -1,8 +1,8 @@
-# server.py
-# Abraham Oliver, 2017
-# Deep Notakto Project
-
-# THING TO TRY: GENERATE REPLAYS THEN TRAIN INSTEAD OF LIVE TRAININING
+#######################################################################
+#  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
+#  File: data_generation.py                                           #
+#  Abraham Oliver, 2018                                               #
+#######################################################################
 
 import os, sys
 sys.path.insert(0, '..')
