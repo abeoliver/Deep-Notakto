@@ -4,26 +4,29 @@
 #  Abraham Oliver, 2018                                               #
 #######################################################################
 
-import os, sys
-sys.path.insert(0, '..')
-from train import train_model_with_tournament_evaluation,\
+import os
+from deepnotakto.train import train_model_with_tournament_evaluation,\
     train_generator_learner, train_model_only_best
-from util import load_agent
-from agents.qtree import QTree
+from deepnotakto.util import load_agent
+from deepnotakto.notakto import QTree
 from random import choice, shuffle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # Layer architectures
-hiddens = [[10, 10, 10], [100], [100, 100], [1000], [1000, 1000], [100, 100, 100], [], [10], [500, 500], [100, 100, 100]]
+# hiddens = [[10, 10, 10], [100], [100, 100], [1000], [1000, 1000],
+#           [100, 100, 100], [], [10], [500, 500], [100, 100, 100]]
 # SELF-PLAY VARS
 # Number of simulations to run for each move
-simulations = [100, 100, 200, 500, 500, 1000, 1000, 1500, 2000, 2000]
+# simulations = [100, 100, 200, 500, 500, 1000, 1000, 1500, 2000, 2000]
+
+hiddens = [[100, 100]]
+simulations = [1000]
 
 if __name__ == "__main__":
-    path = "agents/saves/board/4x4/"
-    tb_interval = 1
-    tb_path = "agents/saves/board/tensorboard/4x4/"
+    path = "death/"
+    tb_interval = 0
+    tb_path = "death/"
     # TRAINING VARS
     queue_size = 300
     learn_rate = .001
@@ -38,31 +41,26 @@ if __name__ == "__main__":
         hidden = hiddens[version]
         sims = simulations[version]
 
-        print("Trial #{}\nSimulations - {}\nHidden - {}\n".format(version + 1, sims, hidden))
+        print("Trial #{}\nSimulations - {}\nHidden - {}\n".format(
+            version + 1, sims, hidden))
 
         # Add file extensions
         name = "{}".format(version + 1)
         model_path = path + name + ".npz"
         best_model_path = path + name + "_best.npz"
         stats_path = path + "{}.stats".format(name)
-        params = {"rotate_live": True, "learn_rate": learn_rate, "batch_size": batch_size,
-                  "replay_size": replay_size, "epochs": epochs}
-        agent = QTree(4, hidden, player_as_input = True,
+        params = {"rotate_live": True, "learn_rate": learn_rate,
+                  "batch_size": batch_size, "replay_size": replay_size,
+                  "epochs": epochs}
+        agent = QTree(3, hidden, guided = True, player_as_input = True,
                       params = params, max_queue = queue_size, name = name,
-                      tensorboard_interval = tb_interval, tensorboard_path = tb_path,
-                      activation_func = "relu", activation_type = "hidden")
+                      tensorboard_interval = tb_interval,
+                      tensorboard_path = tb_path, activation_func = "relu")
 
         statistics = {"meta": {"games": 100, "simulations": sims}}
 
         # Run the training loop
-        train_model_with_tournament_evaluation(agent = agent,
-                                               model_path = model_path,
-                                               stats_path = stats_path,
-                                               best_model_path = best_model_path,
-                                               statistics = statistics,
-                                               save_every = 1,
-                                               player = 2,
-                                               games = 100,
-                                               sims = sims,
-                                               console = False,
-                                               iter_limit = 200)
+        train_model_with_tournament_evaluation(
+            agent = agent, model_path = model_path, stats_path = stats_path,
+            best_model_path = best_model_path, statistics = statistics,
+            player = 1, sims = sims, console = True, iter_limit = 200)

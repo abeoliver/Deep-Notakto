@@ -10,7 +10,7 @@ sys.path.insert(0, '..')
 from train import train_model_with_tournament_evaluation,\
     train_generator_learner, train_model_only_best
 from util import load_agent
-from agents.qtree import QTree
+from notakto import QTree
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -18,7 +18,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Should load model or not
 load_model = False
 # Iteration of trials
-version = 26
+version = 27
 # Agent name
 name = "{}".format(version)
 path = "/voltorb/abraoliv/4x4/"
@@ -27,15 +27,15 @@ activation_func = "relu"
 activation_type = "hidden"
 # Layer architecture
 game_size = 4
-hidden = [200, 1000, 200]
+hidden = [1000, 1000, 200]
 # Desired player evaluation
 player = 2
 
 # TRAINING VARS
-queue_size = 400
+queue_size = 200
 learn_rate = .005
-batch_size = 20
-replay_size = 200
+batch_size = 30
+replay_size = 100
 epochs = 10
 
 # Tensorboard checkpoint path and interval
@@ -44,7 +44,7 @@ tb_path = "/voltorb/abraoliv/tensorboard/"
 
 # SELF-PLAY VARS
 # Number of simulations to run for each move
-sims = 20000
+sims = 10000
 # Number of self-play games to run
 save_every = 1
 
@@ -66,13 +66,16 @@ if __name__ == "__main__":
         agent.change_param("learn_rate", learn_rate)
     else:
         print("Building model...", end=" ")
-        # Create a new randomly-initialized agent with the given training/architecture parameters
-        params = {"rotate_live": True, "learn_rate": learn_rate, "batch_size": batch_size,
-                  "replay_size": replay_size, "epochs": epochs}
-        agent = QTree(game_size, hidden, player_as_input = True,
+        # Create a new agent with the given training/architecture parameters
+        params = {"rotate_live": True, "learn_rate": learn_rate,
+                  "batch_size": batch_size, "replay_size": replay_size,
+                  "epochs": epochs}
+        agent = QTree(game_size, hidden, guided = True, player_as_input = True,
                       params = params, max_queue = queue_size, name = name,
-                      tensorboard_interval = tb_interval, tensorboard_path = tb_path,
-                      activation_func = activation_func, activation_type = activation_type)
+                      tensorboard_interval = tb_interval,
+                      tensorboard_path = tb_path,
+                      activation_func = activation_func,
+                      activation_type = activation_type)
     print("Complete")
 
     # Create or load statistic set
@@ -94,11 +97,3 @@ if __name__ == "__main__":
                                            player = player,
                                            games = games,
                                            sims = sims)
-    """train_generator_learner(agent = agent,
-                            model_path = model_path,
-                            stats_path = stats_path,
-                            statistics = statistics,
-                            challenge_every = save_every,
-                            player = player,
-                            games = games,
-                            sims = sims)"""
