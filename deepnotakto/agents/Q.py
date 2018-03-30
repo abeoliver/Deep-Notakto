@@ -49,6 +49,7 @@ class Q (Agent):
         target - Calculate the target policy for a given data point
         get_action - Get the move vector to play on a given state
         get_Q - Get a Q-value matrix (a square policy vector)
+        get_passable_state - Clean a given state and return a valid model input
         update - Run a training update over given training data
         duplicative_dict - Get a dict that is sufficient to replicate the agent
         save - Save the agent as a duplicative dict with a given name
@@ -165,7 +166,7 @@ class Q (Agent):
             # Initialize params variables like the loss and the optimizer
             self._init_training_vars()
             # Initialize trainer (passing the agent as a parameter)
-            self.trainer = QTrainer(self, params = params, **kwargs)
+            self._init_trainer(params = params, **kwargs)
             self.initialized = True
 
     def get_activation_function(self, func):
@@ -181,6 +182,10 @@ class Q (Agent):
             return lambda x: tf.multiply(x, tf.sigmoid(x))
         else:
             return tf.identity
+
+    def _init_trainer(self, params = None, **kwargs):
+        """ Initialize a trainer object """
+        self.trainer = QTrainer(self, params = params, **kwargs)
 
     def _init_model(self, weights = None, biases = None):
         """
@@ -452,6 +457,17 @@ class Q (Agent):
                                       feed_dict = {self.x: [np.reshape(state, -1)]})[0],
                           state.shape)
 
+    def get_passable_state(self, state):
+        """
+        Prepare a valid input for the computation graph of the model
+
+        Args:
+            state: (array or array[]) State or states to clean for network feed
+        Returns:
+            (array or array[]) State or states fit to be passed through network
+        """
+        return state
+
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
         Update (train) a model over a given set of states and targets
@@ -486,23 +502,22 @@ class Q (Agent):
 
     def duplicative_dict(self):
         return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
-                 "weights": self.get_weights(), "biases": self.get_biases(),
-                 "gamma": self.gamma, "name": self.name,
-                 "beta": self.beta, "classifier": self.classifier,
-                 "params": self.params, "iterations": self.iteration,
-                 "max_queue": self.max_queue,
-                 "tensorboard_interval": self.trainer.tensorboard_interval,
-                 "tensorboard_path": self.trainer.tensorboard_path,
-                 "activation_func": self.activation_func_name,
-                 "activation_type": self.activation_type}
+                "weights": self.get_weights(), "biases": self.get_biases(),
+                "gamma": self.gamma, "name": self.name,
+                "beta": self.beta, "classifier": self.classifier,
+                "params": self.params, "iterations": self.iteration,
+                "max_queue": self.max_queue,
+                "tensorboard_interval": self.trainer.tensorboard_interval,
+                "tensorboard_path": self.trainer.tensorboard_path,
+                "activation_func": self.activation_func_name,
+                "activation_type": self.activation_type}
 
     def save(self, name):
         """
         Save the models parameters in a .npz file
-        Parameters:
-            name (string) - File name for save file
+        Args:
+            name: (string) File name for save file
         """
-        # Remove epsilon function from the parameters for pickle
         with open(name, "wb") as outFile:
             pickle.dump(self.duplicative_dict(), outFile)
 
@@ -669,7 +684,7 @@ class Q (Agent):
         elif type(temp_func) == type(lambda x: None):
             self._temp_func = temp_func
         else:
-            raise ValueError("This value is not permitted as a temperature schedule")
+            raise ValueError("This value is not a valid temperature schedule")
 
     @property
     def network_size(self):
@@ -679,6 +694,7 @@ class Q (Agent):
         for b in self.get_biases():
             total += b.size
         return total
+
 
 class QTrainer (Trainer):
     def default_params(self):
@@ -695,8 +711,9 @@ class QTrainer (Trainer):
         """Gets a callable function for online params"""
         self.offline([state], [action], [reward], 1, 1, learn_rate, **kwargs)
 
-    def offline(self, states = None, actions = None, rewards = None, batch_size = None,
-                epochs = None, learn_rate = None, rotate = None):
+    def offline(self, states = None, actions = None, rewards = None,
+                batch_size = None, epochs = None, learn_rate = None,
+                rotate = None):
         """
         Trains the agent over a set of state, action, reward triples
         Parameters:

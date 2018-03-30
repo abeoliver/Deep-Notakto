@@ -50,12 +50,12 @@ class Trainer (object):
 
     def training_params(self, params = None):
         defaults = dict(self.default_params())
-        if params == None:
+        if params is None:
             self.params = defaults
         else:
             self.params = params
             for key in defaults:
-                if not key in self.params:
+                if key not in self.params:
                     self.params[key] = defaults[key]
 
     def train(self, mode = None, source_agent = None, **kwargs):

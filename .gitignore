@@ -22,3 +22,7 @@ deepnotakto/agents/\.ipynb_checkpoints/
 deepnotakto/agents/saves/
 
 deepnotakto/tensorboard/
+
+deepnotakto/death/
+
+deepnotakto/local_tests\.py
