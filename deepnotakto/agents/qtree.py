@@ -396,6 +396,7 @@ class QTree (Q):
                 policies.append(policy.reshape(node.state.shape))
                 # Choose move based on policy
                 node = node.choose_by_policy(policy)
+                # node = node.choose_by_policy(policy)
                 # If terminal, backpropogate winner and save node data
                 if node.winner != 0:
                     winner = node.winner

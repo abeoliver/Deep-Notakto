@@ -124,8 +124,7 @@ class QTree (BaseQTree):
         """ Get the defaults for a new node """
         parent = super(QTree, self)._node_defaults()
         parent["state"] = np.zeros([self.size, self.size])
-        if self.guided:
-            parent["network"] = self
+        parent["network"] = self
         return parent
 
     def _init_trainer(self, params = None, **kwargs):
