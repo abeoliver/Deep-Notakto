@@ -5,6 +5,7 @@
 #######################################################################
 
 from copy import copy
+from random import choice
 
 import numpy as np
 
@@ -13,6 +14,8 @@ from deepnotakto.agents.qtree import QTreeTrainer as BaseQTreeTrainer
 from deepnotakto.treesearch import GuidedNode as BaseGuidedNode
 from deepnotakto.treesearch import Node as BaseNode
 from deepnotakto.util import array_in_list, rotate
+from deepnotakto.environment import Env as BaseEnv
+from deepnotakto.agents.agent import Agent as BaseAgent
 
 
 class Node (BaseNode):
@@ -209,3 +212,185 @@ class QTreeTrainer (BaseQTreeTrainer):
         return [states + new_states,
                 policies + new_policies,
                 winners + new_winners]
+
+
+class Env (BaseEnv):
+    def __init__(self, size, starting = None, rewards = None):
+        """
+        Initializes the environment
+        Args:
+            size: (int) Side length of the board
+            starting: (array) Starting board configuration if not blank
+            rewards: (dict) Custom reward values
+        """
+        self.size = size
+        self.shape = (size, size)
+        if starting is None:
+            self.starting = np.zeros(self.shape, dtype = np.int8)
+        else:
+            self.starting = starting
+        self.starting_turn = np.sum(self.starting)
+        if rewards is None:
+            self.rewards = {
+                "illegal": -10,
+                "forced": 2,
+                "loss": -2
+            }
+        else:
+            self.rewards = rewards
+
+    def illegal(self, state = None):
+        if state is None:
+            state = self.state
+        if np.max(state) > 1:
+            return True
+        return False
+
+    def play_move_on_state(self, state, action):
+        return np.add(state, action)
+
+    def forced(self, board = None):
+        """Is a loss forced on the next turn"""
+        if board is None:
+            b = copy(self.board)
+        else:
+            b = copy(board)
+        # Calculate possible moves for opponent
+        remaining = self.action_space(b)
+        # If all are losses, a loss is forced
+        for r in remaining:
+            if self.winner(np.add(b, r)) == 0:
+                return False
+        return True
+
+    def reward(self, action):
+        """
+                Returns the immediate reward for a given action
+                Args:
+                    action: (action) Action to play on game state
+                Returns:
+                    (int) Reward for given action
+                """
+        # Play the move on a copy of the board
+        new_state = self.play_move_on_state(self.state, action)
+        # If illegal move, highly negative reward
+        if self.illegal(new_state):
+            return self.rewards["illegal"]
+
+        # Rewards based on winner
+        winner = self.winner(new_state)
+        if winner == 0:
+            # Positive reward for forcing a loss
+            if self.forced(new_state):
+                return self.rewards["forced"]
+            # Otherwise, no reward
+            return 0
+        else:
+            # Negative reward for a loss
+            return self.rewards["loss"]
+
+    def winner(self, state = None):
+        if state is None:
+            state = self.state
+        # Rows
+        for row in state:
+            if np.sum(row) == state.shape[0]:
+                return 1 if self.turn % 2 == 0 else 2
+        # Columns (row in transpose of b)
+        for col in state.T:
+            if np.sum(col) == state.shape[0]:
+                return 1 if self.turn % 2 == 0 else 2
+        # Diagonals
+        # Top left to bottom right
+        tlbr = np.sum(state * np.identity(self.size))
+        if tlbr >= self.size:
+            return 1 if self.turn % 2 == 0 else 2
+        # Bottom left to top right
+        bltr = np.sum(state * np.flip(np.identity(self.size), 1))
+        if bltr >= self.size:
+            return 1 if self.turn % 2 == 0 else 2
+        # Otherwise game is not over
+        return 0
+
+    def action_space(self, board = None):
+        """
+        Returns a list of all possible moves (reguardless of win / loss)
+        Parameters:
+            board ((N, N) array) - Current board state (default self.board)
+        Returns:
+            List of (N, N) arrays - All legal moves for the given board
+        """
+        # Get board
+        if type(board) != np.ndarray:
+            b = copy(self.board)
+        else:
+            b = copy(board)
+        remaining = []
+        # Loop over both axes
+        for i in range(b.shape[0]):
+            for j in range(b.shape[1]):
+                # If there is an empty space, add the move to remaining moves
+                if b[i, j] == 0:
+                    z = np.zeros(b.shape, dtype = np.int32)
+                    z[i, j] = 1
+                    remaining.append(z)
+        return remaining
+
+    def __str__(self):
+        """ Conversion to string """
+        out = ""
+        for i in self.board:
+            for j in i:
+                out += "O" if j == 0 else "X"
+                out += " "
+            out += "\n"
+        return out
+
+
+class RandomAgent (BaseAgent):
+    def __init__(self, env):
+        super(RandomAgent, self).__init__()
+        self.name = "Random"
+        self.env = env
+
+    def get_action(self, state):
+        possible = self.env.action_space(state)
+        player = 2 if self.env.turn % 2 == 0 else 1
+        opponent = 2 if player == 1 else 1
+        not_loser = []
+        move = np.zeros(state.shape, np.int32)
+        # Choose a winner and identify non-losers
+        for m in possible:
+            # Make move temporarily
+            new_state = np.add(m, state)
+            # Discard if it is a loss
+            winner = self.env.winner(new_state)
+            if winner == opponent:
+                continue
+            # If forced loss on opponent, choose move
+            if self.env.forced(new_state):
+                return m
+            # If neither, remember that it is a not a losing move
+            not_loser.append(m)
+        if len(not_loser) >= 1:
+            # If there are non-losing move, choose one randomly
+            return choice(not_loser)
+        else:
+            # If all moves are losses, choose any
+            return choice(possible)
+
+
+def measure(agent, **stats):
+    """ Measure an agent and return the results along with any passed stats """
+    # Zero board
+    z = np.zeros(agent.shape)
+    # Value of zero board
+    stats["zero_val"] = agent.value(z)
+    # Size of raw predictions of zero board
+    stats["zero_norm"] = np.linalg.norm(agent.raw(z))
+    # Maximum probability on zero board
+    policy = agent.policy(z)
+    stats["zero_max"] = np.max(policy)
+    # Mean of probabilities on zero board
+    stats["zero_mean"] = np.mean(policy)
+    return stats

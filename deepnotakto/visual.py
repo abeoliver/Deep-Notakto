@@ -15,9 +15,15 @@ import deepnotakto.util as util
 # Initialize Pygame
 pygame.init()
 
+
 class Visualization (object):
     def __init__(self, size):
-        """Initializes a visualization"""
+        """
+        Initializes a visualization with a given size
+
+        Args:
+            size: (int[2]) Width-by-height tuple for visualization size
+        """
         self.size = self.width, self.height = size
         self.canvas = pygame.display.set_mode(self.size)
         self.define_buttons()
@@ -25,19 +31,19 @@ class Visualization (object):
         pygame.font.init()
 
     def update(self):
-        """Update display"""
+        """ Update display """
         pygame.display.flip()
 
     def array_to_rect(self, a, start_coords, block_size, colorfunc):
         """
         Converts an array into a list of colored and located rectangles
-        Parameters:
-            a ((N, M) array) - Array to be converted
-            start_coords ([Int, Int]) - Location of first corner
-            block_size (int) - Size of each block
-            colorfunc (Float -> Float[3]) - Function to seconds_to_time a number to a color
+        Args:
+            a: (array) Array to be converted
+            start_coords: (int[2]) Location of first corner
+            block_size: (int) Size of each block
+            colorfunc: (Float -> Float[3]) Function from a value to a color
         Returns:
-            List of N * M colored rectangles [x][y][width][height][color]
+            List of colored rectangles: (x, y, width, height, color)
         """
         rects = []
         # Loop through rows
@@ -56,16 +62,23 @@ class Visualization (object):
         # Return list
         return rects
 
-    def draw_rects(self, rects, border_size = 0, color = [0, 0, 0]):
-        """Draw a list of rectangles to the canvas"""
+    def draw_rects(self, rects, border_size = 0, border_color = [0, 0, 0]):
+        """
+        Draw a list of rectangles to the canvas
+
+        Args:
+            rects: ((x, y, w, h, color)[]) List of rectangles to draw
+            border_size: (int) Width of border
+            border_color: (int[3]) Color tuple for color of border
+        """
         for r in rects:
             pygame.draw.rect(self.canvas, r[4], r[:4])
             # Draw border if requested
             if border_size > 0:
-                pygame.draw.rect(self.canvas, color, r[:4], border_size)
+                pygame.draw.rect(self.canvas, border_color, r[:4], border_size)
 
     def init_colors(self):
-        """Initializes color dictionary"""
+        """ Initializes color dictionary """
         self.colors = {
             "white": [255, 255, 255],
             "black": [0, 0, 0],
@@ -74,40 +87,47 @@ class Visualization (object):
             "blue": [0, 0, 255]
         }
 
-    def get_button(self, cursor_loc):
+    def get_button(self, cursor_loc, buttons = None):
         """
         Returns the on-screen button that the user has clicked
-        Parameters:
-            cursor_loc ([int, int]) - Location of the cursor
-            buttons (Dict String ->) - Dictionary of button names to their rectangles
+
+        Args:
+            cursor_loc: (int[2]) Location of the cursor
+            buttons: (dict)  Dictionary of button names to their rectangle areas
         Returns:
             string - Name of button (default "")
         Note:
             Includes right and bottom sides
             Does not include top and left sides
         """
+        if buttons is None:
+            buttons = self.buttons
         x, y = cursor_loc
-        for name in self.buttons:
-            bx, by, bw, bh = self.buttons[name]
+        for name in buttons:
+            bx, by, bw, bh = buttons[name]
             if x > bx and x <= (bx + bw) and y > by and y <= (by + bh):
                 return name
         # Default
         return ""
 
     def define_buttons(self):
+        """ Define clickle button locations """
         self.buttons = {}
 
-class GameWithConfidences (Visualization):
-    def __init__(self, env, a1, a2, max_games = -1, piece_size = 100, show_confidences = True):
+
+class NotaktoGame (Visualization):
+    def __init__(self, env, a1, a2, max_games = -1, piece_size = 100,
+                 show_confidences = True):
         """
-        Initalizes a GUI game on an environment between two players
-        Parameters:
-            env (Environment) - Environment to play a game on
-            a1 (Agent) - Agent 1
-            a2 (Agent) - Agent 2
-            max_games (int) - Number of games to play (negative = until close)
-            piece_size (int) - Side lenghth of a piece
-            show_confidences (bool) - Show the agent confidence matrix or not
+        Initalizes a GUI Notakto game over an environment between two players
+
+        Args:
+            env: (Environment) Environment to play a game on
+            a1: (Agent) Agent 1
+            a2: (Agent) Agent 2
+            max_games: (int) Number of games to play (negative = until close)
+            piece_size: (int) Side lenghth of a piece
+            show_confidences: (bool) Show the agent confidence matrix or not
         """
         # Get the desired screen size (depends on piece_size and board size)
         self.shape = env.shape
@@ -123,7 +143,7 @@ class GameWithConfidences (Visualization):
         # 2 spacing pieces and a game board
         height = piece_size * (2 + self.side)
         # Call parent intiializer
-        super(GameWithConfidences, self).__init__([width, height])
+        super(NotaktoGame, self).__init__([width, height])
         self.env = env
         self.max_games = max_games
         self.a1 = a1
@@ -139,20 +159,15 @@ class GameWithConfidences (Visualization):
             self.font = pygame.font.SysFont('Calibri Bold', self.width // 30)
         # Run game (and end if invalid values inhibit agents)
         self.run()
-        """
-        try:
-            self.run()
-        except InvalidArgumentError as error:
-            print("Tensor has NaN or Inf values")
-            pygame.quit()
-        except:
-            pygame.quit()"""
 
     def define_buttons(self):
-        """Define the buttons coordinates for the given board size"""
+        """ Define the buttons coordinates for the given board size """
+        # Initialize dict and next button
         buttons = {
-            "next": (self.width - self.piece_size, 0, self.piece_size, self.piece_size)
+            "next": (self.width - self.piece_size, 0, self.piece_size,
+                     self.piece_size)
         }
+        # Create buttons for each piece on a notakto board
         start = [self.piece_size, self.piece_size]
         for n in range(self.side):
             for m in range(self.side):
@@ -161,17 +176,18 @@ class GameWithConfidences (Visualization):
                     start[1] + m * self.piece_size,
                     self.piece_size, self.piece_size
                 )
+        # Set the buttons dictionary
         self.buttons = buttons
 
     def display(self, board, confidences = None, banner = "", next = False):
         """
         Updates the canvas to the desired display screen
-        Parameters:
-            board ((N, N) array) - Current board state
-            confidences ((N, N) array) - Confidences of the previous agent's move
-                                            (only if self.show_confidences)
-            banner (string) - Banner to display on the top of the screen
-            next (bool) - Show next button or not
+
+        Args:
+            board: (array) Current board state
+            confidences: (array) Confidences of the previous agent (if needed)
+            banner: (string) Banner to display on the top of the screen
+            next: (bool) Show next button or not
         """
         # Fill the canvas (background color)
         self.canvas.fill(self.colors["white"])
@@ -181,8 +197,9 @@ class GameWithConfidences (Visualization):
             text_surface = self.font.render(banner, True, self.colors["black"])
             text_rect = text_surface.get_rect()
             # Place the surface centered on the screen
-            self.canvas.blit(text_surface, (self.width // 2 - text_rect[2] // 2,
-                                            self.piece_size // 2 - text_rect[3] // 2))
+            self.canvas.blit(text_surface,
+                             (self.width // 2 - text_rect[2] // 2,
+                              self.piece_size // 2 - text_rect[3] // 2))
         # Draw next arrow (if enabled)
         if next:
             # A triangle in the top right corner
@@ -191,8 +208,8 @@ class GameWithConfidences (Visualization):
                                   self.piece_size // 4),
                                  (self.width - ((3 * self.piece_size) // 4),
                                   (3 * self.piece_size) // 4),
-                                  (self.width - (self.piece_size // 4),
-                                   self.piece_size // 2)])
+                                 (self.width - (self.piece_size // 4),
+                                  self.piece_size // 2)])
         # DISPLAY CONFIDENCS
         if self.show_confidences:
             # Normalize the confidences
@@ -203,7 +220,8 @@ class GameWithConfidences (Visualization):
             conf_rects = self.array_to_rect(normed, start_conf_point,
                                             self.piece_size, self.q_colorfunc)
             # Draw the rectangles
-            self.draw_rects(conf_rects, self.piece_size // 10, self.colors["white"])
+            self.draw_rects(conf_rects, self.piece_size // 10,
+                            self.colors["white"])
         # DISPLAY BOARD
         # Get the colored rectangles representing the game board
         board_rects = self.array_to_rect(board,
@@ -211,12 +229,13 @@ class GameWithConfidences (Visualization):
                                          self.piece_size,
                                          self.board_colorfunc)
         # Draw the rectangles
-        self.draw_rects(board_rects, self.piece_size // 10 , self.colors["white"])
+        self.draw_rects(board_rects, self.piece_size // 10,
+                        self.colors["white"])
         # Update the screen
         self.update()
 
     def board_colorfunc(self, x):
-        """Color function for a regular board"""
+        """ Color function for a regular board """
         if int(round(x)) == 1:
             return self.colors["piece_closed"]
         else:
@@ -225,14 +244,17 @@ class GameWithConfidences (Visualization):
     def q_colorfunc(self, x, cmap = "viridis"):
         """
         Colorfunction for Q values
-        Parameters:
-            x ((N, N) array) - Q value matrix that is normalized to [0, 1]
-            cmap (string) - Matplotlib colormap name
+
+        Args:
+            x: (float) Q value that is normalized to [0, 1]
+            cmap: (string) Matplotlib colormap name
+        Returns:
+            (color) Color for given Q value
         """
         return np.int32(np.multiply(255, get_cmap(cmap)(x)))
 
     def events(self):
-        """Run the pygame event loop and return any buttons pressed"""
+        """ Run the pygame event loop and return any buttons pressed """
         # Button pressed (originally none)
         button = ""
         # Check event queue
@@ -248,7 +270,7 @@ class GameWithConfidences (Visualization):
         return button
 
     def run(self):
-        """Runs the game"""
+        """ Run a notakto game """
         # ---------- GAME SET LOOP ----------
         games = 0
         confidences = None
@@ -261,12 +283,14 @@ class GameWithConfidences (Visualization):
             # Is the game loop finished
             done = False
             # If the first player is a computer, have it play
-            player, is_h = [(self.a1, self.a1_human), (self.a2, self.a2_human)][self.env.turn % 2]
+            options = [(self.a1, self.a1_human), (self.a2, self.a2_human)]
+            player, is_h = options[self.env.turn % 2]
+            # If the player is not a human, play the move before game loop
             if not is_h:
                 if self.show_confidences:
                     confidences = player.get_Q(self.env.observe())
-                self.display(self.env.observe(), confidences, "WAITING ON PLAYER 1",
-                             next = False)
+                self.display(self.env.observe(), confidences,
+                             "WAITING ON PLAYER 1", next = False)
                 player.act(self.env)
             # Otherwise setup for a human player's first turn
             elif self.show_confidences:
@@ -285,7 +309,7 @@ class GameWithConfidences (Visualization):
                 h_advance = False
                 # ---------- HUMAN MOVE GUI LOOP (if needed) ----------
                 if (self.env.turn % 2 == 0 and self.a1_human) or \
-                    (self.env.turn % 2 == 1 and self.a2_human):
+                        (self.env.turn % 2 == 1 and self.a2_human):
                     # Run until a valid human move has been played
                     while True:
                         # Draw screen
@@ -321,7 +345,8 @@ class GameWithConfidences (Visualization):
                 # If advanced to next move (by human or by human move) and
                 #   next player is an AI, enter AI loop
                 # Draw screen
-                if (button == "next" or h_advance) and not (self.a1_human and self.a2_human):
+                if (button == "next" or h_advance) and not\
+                        (self.a1_human and self.a2_human):
                     # Clear button
                     button = ""
                     h_advance = False
@@ -331,7 +356,8 @@ class GameWithConfidences (Visualization):
                     if self.show_confidences:
                         confidences = player.get_Q(self.env.observe())
                     self.display(self.env.observe(), confidences,
-                                 "WAITING FOR PLAYER {}".format(1 + (self.env.turn % 2)),
+                                 "WAITING FOR PLAYER {}".format(
+                                     1 + (self.env.turn % 2)),
                                  next = False)
                     observation = player.act(self.env)
                     # Catch illegal move

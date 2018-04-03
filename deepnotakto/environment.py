@@ -17,26 +17,25 @@ Keys:
     "info" (dict) - Other environment information
 """
 
+
 class Env (object):
-    def __init__(self, size, rewards = None, starting = None):
+    def __init__(self, starting = None, rewards = None):
         """
         Initializes the environment
-        Parameters:
-            size (Int) - Side length of the board (board size = size * size)
+        Args:
+            starting: (state) Starting board configuration
+            rewards: (dict) Custom reward values
         """
-        # Board variables
-        self.size = size
-        self.shape = (size, size)
-        if type(starting) == type(None):
-            self.starting = np.zeros(self.shape, dtype = np.int8)
+        if starting is None:
+            self.starting = None
         else:
             self.starting = starting
-        self.starting_turn = np.sum(self.starting)
+        self.starting_turn = 0
         self.reset()
-        if rewards == None:
+        if rewards is None:
             self.rewards = {
                 "illegal": -10,
-                "forced": 2,
+                "win": 2,
                 "loss": -2
             }
         else:
@@ -44,38 +43,34 @@ class Env (object):
     
     def reset(self):
         """Reset board"""
-        self.board = copy(self.starting)
+        self.state = copy(self.starting)
         self.turn = self.starting_turn
-        self._illegal = False
     
     def observe(self):
-        """The observe step of the reinforcement learning pipeline"""
-        return copy(self.board)
+        """ The observe step of the reinforcement learning pipeline """
+        return copy(self.state)
     
     def reward(self, action):
         """
         Returns the immediate reward for a given action
-        Parameters:
-            action ((N, N) array) - One hot of the given move
+        Args:
+            action: (action) Action to play on game state
         Returns:
-            Int - Reward for given action
+            (int) Reward for given action
         """
-        new_board = np.add(self.board, action)
+        # Play the move on a copy of the board
+        new_state = self.play_move_on_state(self.state, action)
         # If illegal move, highly negative reward
-        if np.max(new_board) > 1:
-            self._illegal = True
+        if self.is_illegal(new_state):
             return self.rewards["illegal"]
+
         # Rewards based on winner
-        winner = self.winner(new_board)
+        winner = self.winner(new_state)
         if winner == 0:
-            # Positive reward for forcing a loss
-            if self.forced(new_board):
-                # High reward for a forced win
-                return self.rewards["forced"]
-            # No reward
             return 0
+        if winner == self.player:
+            return self.rewards["win"]
         else:
-            # Negative reward for a loss
             return self.rewards["loss"]
         
     def act(self, action):
@@ -92,100 +87,37 @@ class Env (object):
         # Calculate move reward
         reward = self.reward(action)
         # Calculate move effect
-        moved = np.add(self.board, action)
+        moved = self.play_move_on_state(self.state, action)
         # Play the move if the move isn't legal
-        if np.max(moved) > 1:
+        if not self.illegal():
             illegal = True
         else:
-            self.board = moved
+            self.state = moved
             illegal = False
             # Update turn counter
             self.turn += 1
         return {
-            "observation": self.board,
+            "observation": self.observe(),
             "reward": reward,
-            "done": self.winner(),
+            "winner": self.winner(),
             "action": action,
             "info": {"illegal": illegal}
         }
+
+    def play_move_on_state(self, state, action):
+        """ Play an action onto a given state """
+        return state
     
-    def winner(self, board = None):
+    def winner(self, state = None):
         """Checks if game is over"""
-        if type(board) == type(None):
-            board = self.board
-        # Rows
-        for row in board:
-            if np.sum(row) == board.shape[0]:
-                return 1 if self.turn % 2 == 0 else 2
-        # Columns (row in transpose of b)
-        for col in board.T:
-            if np.sum(col) == board.shape[0]:
-                return 1 if self.turn % 2 == 0 else 2
-        # Diagonals
-        # Top left to bottom right
-        tlbr = np.sum(board * np.identity(self.size))
-        if tlbr >= self.size:
-            return 1 if self.turn % 2 == 0 else 2
-        # Bottom left to top right
-        bltr = np.sum(board * np.flip(np.identity(self.size), 1))
-        if bltr >= self.size:
-            return 1 if self.turn % 2 == 0 else 2
-        # Otherwise game is not over
         return 0
     
-    def forced(self, board = None):
-        """Is a loss forced on the next turn"""
-        if type(board) != np.ndarray:
-            b = copy(self.board)
-        else:
-            b = copy(board)
-        summed = np.sum(b)
-        # If n * (n - 1) pieces are played, then garaunteed force
-        #if summed > ((b.shape[0] - 1) * b.shape[0]): return True
-        # If less than n + 1 played, no possible force
-        #if summed < b.shape[0] + 1: return False
-        # Calculate possible moves for opponent
-        remaining = self.action_space(b)
-        # If all are losses, a loss is forced
-        for r in remaining:
-            if self.winner(np.add(b, r)) == 0:
-                return False
-        return True
-    
-    def action_space(self, board = None):
-        """
-        Returns a list of all possible moves (reguardless of win / loss)
-        Parameters:
-            board ((N, N) array) - Current board state (default self.board)
-        Returns:
-            List of (N, N) arrays - All legal moves for the given board
-        """
-        # Get board
-        if type(board) != np.ndarray:
-            b = copy(self.board)
-        else:
-            b = copy(board)
-        remaining = []
-        # Loop over both axes
-        for i in range(b.shape[0]):
-            for j in range(b.shape[1]):
-                # If there is an empty space, add the move to remaining moves
-                if b[i, j] == 0:
-                    z = np.zeros(b.shape, dtype = np.int32)
-                    z[i, j] = 1
-                    remaining.append(z)
-        return remaining
-    
-    def __str__(self):
-        """Conversion to string"""
-        print()
-        for i in self.board:
-            for j in i:
-                print("O" if j == 0 else "X", end = " ")
-            print()
-        return ""
-    
     def display(self):
-        """Prints board or shows it as an image"""
+        """ Prints board to output """
         self.__str__()
         print()
+
+    @property
+    def player(self):
+        """ Get the number of the player currently playing """
+        return self.turn % 2 + 1

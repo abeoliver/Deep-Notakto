@@ -7,10 +7,9 @@
 import os, sys
 from pickle import load
 sys.path.insert(0, '..')
-from train import train_model_with_tournament_evaluation,\
-    train_generator_learner, train_model_only_best
+from train import train_model_with_tournament_evaluation
 from util import load_agent
-from notakto import QTree
+from notakto import QTree, Env, measure, RandomAgent
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -18,7 +17,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Should load model or not
 load_model = False
 # Iteration of trials
-version = 27
+version = 100
 # Agent name
 name = "{}".format(version)
 path = "/voltorb/abraoliv/4x4/"
@@ -30,6 +29,8 @@ game_size = 4
 hidden = [1000, 1000, 200]
 # Desired player evaluation
 player = 2
+# Guided or regular
+guided = False
 
 # TRAINING VARS
 queue_size = 200
@@ -70,8 +71,9 @@ if __name__ == "__main__":
         params = {"rotate_live": True, "learn_rate": learn_rate,
                   "batch_size": batch_size, "replay_size": replay_size,
                   "epochs": epochs}
-        agent = QTree(game_size, hidden, guided = True, player_as_input = True,
-                      params = params, max_queue = queue_size, name = name,
+        agent = QTree(game_size, hidden, guided = guided,
+                      player_as_input = True, params = params,
+                      max_queue = queue_size, name = name,
                       tensorboard_interval = tb_interval,
                       tensorboard_path = tb_path,
                       activation_func = activation_func,
@@ -88,12 +90,16 @@ if __name__ == "__main__":
         statistics = {"meta": {"games": games, "simulations": sims}}
 
     # Run the training loop
+    env = Env(game_size)
     train_model_with_tournament_evaluation(agent = agent,
+                                           env = env,
+                                           opponent = RandomAgent(env),
+                                           statistics = statistics,
                                            model_path = model_path,
                                            stats_path = stats_path,
                                            best_model_path = best_model_path,
-                                           statistics = statistics,
                                            save_every = save_every,
                                            player = player,
                                            games = games,
-                                           sims = sims)
+                                           sims = sims,
+                                           measure_func = measure)

@@ -34,6 +34,7 @@ class QTree (Q):
         add_episode - Add a given state etc. tuple to the current episode
         save_episode - Save episode to the memory queue (trains if requested)
         save_point - Save a given state-policy-winner to the memory queue
+        new_node - Create a compatibly-typed node with given parameters
         self_play - Run games of self play to generate training data
         act - Act on an evironment
         duplicative_dict - Get a dict that is sufficient to replicate the agent
@@ -396,7 +397,6 @@ class QTree (Q):
                 policies.append(policy.reshape(node.state.shape))
                 # Choose move based on policy
                 node = node.choose_by_policy(policy)
-                # node = node.choose_by_policy(policy)
                 # If terminal, backpropogate winner and save node data
                 if node.winner != 0:
                     winner = node.winner
@@ -423,7 +423,7 @@ class QTree (Q):
 
     def act(self, env, mode = None):
         """
-        Act on an environment
+        Act on an environment using the desired mode
 
         Args:
             env: (Environment) Game environment to play on
@@ -438,7 +438,7 @@ class QTree (Q):
 
     def _q_act(self, env):
         """
-        Chooses a move to play based on a policy
+        Choose a move to play deterministically and purely  based on a policy
 
         Args:
             env: (Environment) Environement to play on
@@ -449,7 +449,7 @@ class QTree (Q):
 
     def _search_act(self, env):
         """
-        Chooses a move to play by the result of a tree search
+        Choose a move to play by the result of a tree search
 
         Args:
             env: (Environment) Environement to play on

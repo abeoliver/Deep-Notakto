@@ -1,7 +1,6 @@
 from datetime import datetime
 from numpy import zeros
-from deepnotakto.agents.qtree import QTree
-from deepnotakto.treesearch import GuidedNotaktoNode
+from deepnotakto.notakto import QTree, GuidedNode
 
 
 def timer(func, *args, **kwargs):
@@ -15,8 +14,7 @@ def timer(func, *args, **kwargs):
 total = datetime.now() - datetime.now()
 i = 10
 for _ in range(i):
-    agent = QTree(3, [])
-    node = GuidedNotaktoNode(zeros([3,3]), agent)
+    agent = QTree(10, [])
+    node = GuidedNode(zeros([10,10]), agent)
     total += timer(node.action_space)[1]
-    print()
 print("AVG {}".format(total / i))

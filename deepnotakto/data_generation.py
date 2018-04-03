@@ -5,10 +5,9 @@
 #######################################################################
 
 import os
-from deepnotakto.train import train_model_with_tournament_evaluation,\
-    train_generator_learner, train_model_only_best
+from deepnotakto.train import train_model_with_tournament_evaluation
 from deepnotakto.util import load_agent
-from deepnotakto.notakto import QTree
+from deepnotakto.notakto import QTree, Env, RandomAgent, measure
 from random import choice, shuffle
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -33,6 +32,7 @@ if __name__ == "__main__":
     batch_size = 10
     replay_size = 100
     epochs = 10
+    game_size = 3
     # Shuffle hyperparameters
     shuffle(hiddens)
     shuffle(simulations)
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         params = {"rotate_live": True, "learn_rate": learn_rate,
                   "batch_size": batch_size, "replay_size": replay_size,
                   "epochs": epochs}
-        agent = QTree(3, hidden, guided = True, player_as_input = True,
+        agent = QTree(game_size, hidden, guided = True, player_as_input = True,
                       params = params, max_queue = queue_size, name = name,
                       tensorboard_interval = tb_interval,
                       tensorboard_path = tb_path, activation_func = "relu")
@@ -60,7 +60,10 @@ if __name__ == "__main__":
         statistics = {"meta": {"games": 100, "simulations": sims}}
 
         # Run the training loop
+        env = Env(game_size)
         train_model_with_tournament_evaluation(
-            agent = agent, model_path = model_path, stats_path = stats_path,
+            agent = agent, env = env, opponent = RandomAgent(env),
+            model_path = model_path, stats_path = stats_path,
             best_model_path = best_model_path, statistics = statistics,
-            player = 1, sims = sims, console = True, iter_limit = 200)
+            player = 1, sims = sims, console = True, iter_limit = 200,
+            measure_func = measure)
