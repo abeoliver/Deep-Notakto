@@ -89,7 +89,7 @@ class Env (object):
         # Calculate move effect
         moved = self.play_move_on_state(self.state, action)
         # Play the move if the move isn't legal
-        if not self.illegal():
+        if self.illegal():
             illegal = True
         else:
             self.state = moved

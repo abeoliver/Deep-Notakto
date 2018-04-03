@@ -28,7 +28,7 @@ def play(env, a1, a2):
         # Play
         observation = player.act(env)
         # Check for illegal move or a win
-        if observation["info"]["illegal"] or observation["done"]:
+        if observation["info"]["illegal"] or observation["winner"] != 0:
             break
     # End the game
     a1.save_episode()
@@ -38,6 +38,7 @@ def play(env, a1, a2):
 
 
 def tournament(env, a1, a2, games):
+    """ Run a tournament environment for a given number of games """
     wins = [0, 0]
     for _ in range(games):
         wins[play(env, a1, a2) - 1] += 1
@@ -45,6 +46,7 @@ def tournament(env, a1, a2, games):
 
 
 def elapsed_time(start):
+    """ Get a pretty print string for the time since a given start time """
     new_time = time() - start
     elapsed = [int(i) for i in seconds_to_time(new_time)]
     clock = localtime(time())[3:5]
@@ -56,17 +58,39 @@ def elapsed_time(start):
         "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
 
 
-def train_model_with_tournament_evaluation(agent, env, opponent, statistics,
-                                           model_path, stats_path,
+def train_model_with_tournament_evaluation(agent, opponent, env,
+                                           statistics = {},
+                                           model_path = "model.npz",
+                                           stats_path = "model.stats",
                                            best_model_path = None,
                                            save_every = 1, sims = 100,
                                            player = 1, games = 100,
                                            break_at_100 = True, console = True,
                                            iter_limit = 0, measure_func = None):
-    """ Run a training loop with evaluation against a random opponent """
+    """
+    Run a training loop with evaluation against an opponent
+
+    Args:
+        agent: (Agent) An agent to train
+        opponent: (Agent) Agent to compete against in tournament evaluation
+        env: (Env) Environment to compete and evaluate in
+        statistics: (dict) Current statistics dictionary
+        model_path: (string) Filepath for saving current model
+        stats_path: (string) Filepath for saving statistic dictionary
+        best_model_path: (string) Filepath for saving best model
+        save_every: (int) Number of iterations between saves
+        sims: (int) Number of simulations per move for treesearch
+        player: (1 or 2) Player number for agent in tournament
+        games: (int) Number of games in tournament
+        break_at_100: (bool) Should stop training after 100% win rate
+        console: (bool) Output progress to console?
+        iter_limit: (int) Maximum iterations in training loop
+        measure_func: (agent, kwargs -> dict) Function to calculate statistics
+    """
     # Clean input
     if best_model_path is None:
-        best_model_path = model_path + "_best"
+        ext = model_path[-4:]
+        best_model_path = model_path[:-4] + "_best" + ext
     if measure_func is None:
         measure_func = default_measure
 
@@ -76,9 +100,11 @@ def train_model_with_tournament_evaluation(agent, env, opponent, statistics,
     # Begin console output with save location and time
     if console:
         clock = localtime(time())[3:5]
-        o = "\n\n-------- {} --------\nSaved as '{}'\nStarted at {} : {} {}\n".format(
-            agent.name, model_path, int(clock[0]) % 12 if clock[0] not in [0, 12] else 12,
-            str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and int(clock[0]) != 0 else "AM")
+        o = "\n\n-------- {} --------\nSaved as '{}'\nStarted at {} : {} {}\n".\
+            format(agent.name, model_path,
+                   int(clock[0]) % 12 if clock[0] not in [0, 12] else 12,
+                   str(clock[1]).zfill(2), "PM" if clock[0] >= 12 and
+                                                   int(clock[0]) != 0 else "AM")
         print(o)
 
     # Start clock
@@ -109,9 +135,12 @@ def train_model_with_tournament_evaluation(agent, env, opponent, statistics,
         if console:
             print("Q-based evaluation... ", end = "")
         players = [agent, opponent]
-        q_wins = tournament(env, players[player - 1], players[2 - player], games)[player - 1]
-        if console: print("Complete")
-        outputs.append("Q Evaluation          {}%".format(int(q_wins * 100 / games)))
+        q_wins = tournament(env, players[player - 1],
+                            players[2 - player], games)[player - 1]
+        if console:
+            print("Complete")
+        outputs.append("Q Evaluation          {}%".format(
+            int(q_wins * 100 / games)))
 
         # Designate as best model if is better than previous model
         is_best = False
@@ -144,5 +173,7 @@ def train_model_with_tournament_evaluation(agent, env, opponent, statistics,
         if iter_limit > 0 and agent.iteration >= iter_limit:
             return None
 
+
 def default_measure(agent, **given_stats):
+    """ Default measure fuction; return given statistics in a dictionary """
     return given_stats
