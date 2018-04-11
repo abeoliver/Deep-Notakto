@@ -6,8 +6,6 @@
 
 from copy import copy
 
-import numpy as np
-
 """
 Define "Observation" (dict)
 Keys:
@@ -22,6 +20,7 @@ class Env (object):
     def __init__(self, starting = None, rewards = None):
         """
         Initializes the environment
+
         Args:
             starting: (state) Starting board configuration
             rewards: (dict) Custom reward values
@@ -42,7 +41,7 @@ class Env (object):
             self.rewards = rewards
     
     def reset(self):
-        """Reset board"""
+        """ Reset board """
         self.state = copy(self.starting)
         self.turn = self.starting_turn
     
@@ -53,6 +52,7 @@ class Env (object):
     def reward(self, action):
         """
         Returns the immediate reward for a given action
+
         Args:
             action: (action) Action to play on game state
         Returns:
@@ -76,13 +76,15 @@ class Env (object):
     def act(self, action):
         """
         Perform an action on the environment
-        Parameters:
-            action ((N, M) array) - One hot of the desired move
-        Returns:
-            Observation Object
+
         Note:
             When an illegal move is attempted no move is executed
             and the turn counter is not incremented
+
+        Args:
+            action: (array) One hot vector of the desired move
+        Returns:
+            (Observation) Environement observation after move
         """
         # Calculate move reward
         reward = self.reward(action)
@@ -109,7 +111,7 @@ class Env (object):
         return state
     
     def winner(self, state = None):
-        """Checks if game is over"""
+        """ Return the winner of a given board (default: evironment board) """
         return 0
     
     def display(self):

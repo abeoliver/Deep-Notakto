@@ -5,12 +5,9 @@
 #######################################################################
 
 from deepnotakto import util
-from deepnotakto.environment import Env
-from deepnotakto.trainer import Trainer
 from deepnotakto import train
 from deepnotakto import visual
 from deepnotakto import treesearch
 from deepnotakto import notakto
-import deepnotakto.agents
 
 __all__ = dir()

@@ -90,10 +90,9 @@ if __name__ == "__main__":
         statistics = {"meta": {"games": games, "simulations": sims}}
 
     # Run the training loop
-    env = Env(game_size)
     train_model_with_tournament_evaluation(agent = agent,
-                                           opponent = RandomAgent(env),
-                                           env = env,
+                                           opponent = RandomAgent(),
+                                           env = Env(game_size),
                                            statistics = statistics,
                                            model_path = model_path,
                                            stats_path = stats_path,

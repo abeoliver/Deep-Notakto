@@ -12,19 +12,20 @@ from deepnotakto.util import rotate as rotate_func
 
 
 class Trainer (object):
-    def __init__(self, agent, params = None, tensorboard_path = None, tensorboard_interval = 0,
-                 iterations = 0):
+    def __init__(self, agent, params = None, tensorboard_path = None,
+                 tensorboard_interval = 0, iterations = 0):
         """
         Initializes a Trainer object
-        Parameter:
-            agent (Agent) - Agent to train
-            params (dict) - params parameters
-            tensorboard_path (string) - File path to save Tensorboard info
+
+         Note:
+            If tensorboard_interval is less than 1 then recording not used
+
+        Args:
+            agent: (Agent) Agent to train
+            params: (dict) params parameters
+            tensorboard_path: (string) File path to save Tensorboard info
                                         (default "/tensorboard")
-            tensorboard_interval (int) - Number of iterations between
-                                            tensorboard saves
-        Note:
-            If tensorboard_interval is less than 1 then recording not implemented
+            tensorboard_interval: (int) Iterations between tensorboard saves
         """
         self.agent = agent
         self.iteration = iterations
@@ -35,7 +36,8 @@ class Trainer (object):
             if tensorboard_path == None:
                 tensorboard_path = "tensorboard/"
             self.tensorboard_path = tensorboard_path
-            self.writer = tf.summary.FileWriter(tensorboard_path + agent.name + "/")
+            self.writer = tf.summary.FileWriter(
+                tensorboard_path + agent.name + "/")
             self.tensorboard_interval = tensorboard_interval
             self.record = True
         else:
@@ -43,12 +45,15 @@ class Trainer (object):
             self.tensorboard_path = None
 
     def change_param(self, name, value):
+        """ Change the value of a single training parameter """
         self.params[name] = value
 
     def default_params(self):
+        """ Get the default training parameters """
         return {"replay_size": 1}
 
     def training_params(self, params = None):
+        """ Resolve given set of parameters using defaults for missing items """
         defaults = dict(self.default_params())
         if params is None:
             self.params = defaults
@@ -59,24 +64,16 @@ class Trainer (object):
                     self.params[key] = defaults[key]
 
     def train(self, mode = None, source_agent = None, **kwargs):
-        """Trains the model with the set params parameters"""
-        options = {"online": self._online_mode, "episodic": self._episodic_mode,
-                   "replay": self._replay_mode}
-        if mode == None:
+        """ Trains the model with the set of training parameters """
+        options = {"episodic": self._episodic_mode, "replay": self._replay_mode}
+        if mode is None:
             options[self.params["type"]](source_agent, **kwargs)
         elif mode in options:
             options[mode](source_agent, **kwargs)
 
-    def _online_mode(self, source_agent = None, **kwargs):
-        if source_agent == None:
-            source_agent = self.agent
-        # Get move data
-        ep = source_agent.episode[-1]
-        # Run trainer
-        self.online(ep[0], ep[1], ep[2], **kwargs)
-
     def _episodic_mode(self, source_agent = None, **kwargs):
-        if source_agent == None:
+        """ Train a model over a source agent's current episode """
+        if source_agent is None:
             source_agent = self.agent
         # Get episode data
         states = []
@@ -90,8 +87,8 @@ class Trainer (object):
         self.offline(states, actions, rewards, **kwargs)
 
     def _replay_mode(self, source_agent = None, **kwargs):
-        """Experience replay params mode"""
-        if source_agent == None:
+        """ Train over an experience replay """
+        if source_agent is None:
             source_agent = self.agent
         size = len(source_agent.states)
         if size > self.params["replay_size"]:
@@ -107,37 +104,6 @@ class Trainer (object):
         """Gets a callable function for online params"""
         return lambda x: None
 
-    def offline(self, **kwargs):
+    def offline(self, states = None, actions = None, rewards = None,
+                batch_size = None, epochs = None, learn_rate = None):
         pass
-
-    def get_rotations(self, states, targets):
-        """Train over the rotated versions of each state and target (or probs)"""
-        # Copy states so as not to edit outside of scope
-        states = list(states)
-        # Collect rotated versions of each state and target
-        new_states = []
-        new_targets = []
-        for s, t in zip(states, targets):
-            ns = s
-            nt = t
-            for i in range(3):
-                rs = rotate_func(ns)
-                rt = rotate_func(nt)
-                new_states.append(rs)
-                new_targets.append(rt)
-                ns = rs
-                nt = rt
-        # Combine lists
-        all_states = states + new_states
-        all_targets = targets + new_targets
-        return [all_states, all_targets]
-
-    def chunk(self, l, n):
-        """
-        Yield successive n-sized chunks from l
-        Taken from https://stackoverflow.com/questions/312443/how-do-you-split-a-list-into-evenly-sized-chunks
-        """
-        if n < 0:
-            yield l
-        for i in range(0, len(l), n):
-            yield l[i:i + n]

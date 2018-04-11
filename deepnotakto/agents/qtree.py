@@ -14,7 +14,7 @@ import numpy as np
 import tensorflow as tf
 
 import deepnotakto.util as util
-from deepnotakto.agents.Q import Q
+from deepnotakto.agents import Q
 from deepnotakto.trainer import Trainer
 from deepnotakto.treesearch import search, GuidedNode
 
@@ -26,7 +26,7 @@ class QTree (Q):
     Methods:
         clear - Reset the agent
         policy - Calculuate the policy for a given state
-        get_Q - Get a Q-value matrix (a square policy vector)
+        get_q - Get a Q-value matrix (a square policy vector)
         value - Calculate the policy for a given state
         raw - Get the raw output from the model after passing a given state
         update - Run a training update over given training data
@@ -230,7 +230,7 @@ class QTree (Q):
             return probs[0]
         return probs
 
-    def get_Q(self, state):
+    def get_q(self, state):
         """
         Get a policy and return a reshaped version
 
@@ -579,7 +579,7 @@ class QTreeTrainer (Trainer):
             order = list(range(len(states)))
             shuffle(order)
             # Chunk index list into batches of desired size
-            batches = list(self.chunk(order, batch_size))
+            batches = list(util.chunk(order, batch_size))
             summary = None
             for batch in batches:
                 bs, bp, bw = [[states[b] for b in batch],

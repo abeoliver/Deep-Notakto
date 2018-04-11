@@ -4,16 +4,10 @@
 #  Abraham Oliver, 2018                                               #
 #######################################################################
 
-from time import time
-
-import os
-
+from pickle import dump
 from time import time, localtime
-from pickle import dump, load
-from numpy import sqrt
-from copy import deepcopy
 
-from deepnotakto.util import load_agent, seconds_to_time
+from deepnotakto.util import seconds_to_time
 
 
 def play(env, a1, a2):
@@ -27,6 +21,7 @@ def play(env, a1, a2):
         player = [a1, a2][env.turn % 2]
         # Play
         observation = player.act(env)
+        #print(observation["observation"])
         # Check for illegal move or a win
         if observation["info"]["illegal"] or observation["winner"] != 0:
             break

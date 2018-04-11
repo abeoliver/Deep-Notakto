@@ -8,18 +8,18 @@ import sys
 
 import numpy as np
 
-from deepnotakto.agents.agent import Agent
+from deepnotakto.agents import Agent
 
 
 class Human (Agent):
     def __init__(self):
-        """Initializes a human agent"""
+        """ Initializes a human agent """
         # Call parent initializer
         super(Human, self).__init__()
         self.name = "Human"
     
     def get_action(self, state):
-        """Get the action from the user"""
+        """ Get the action from the user """
         # Continue prompting until a valid move is made
         while True:
             # Prompt for user choice

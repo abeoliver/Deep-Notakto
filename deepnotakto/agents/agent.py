@@ -14,6 +14,13 @@ from deepnotakto.trainer import Trainer
 
 class Agent (object):
     def __init__(self, training = {"mode": None}, max_queue = 100):
+        """
+        Initialize an Agent object
+
+        Args:
+            training:  (dict) Training parameters used by a trainer
+            max_queue: (int) Length of memory queue
+        """
         self.states = deque(maxlen = max_queue)
         self.actions = deque(maxlen = max_queue)
         self.rewards = deque(maxlen = max_queue)
@@ -23,6 +30,7 @@ class Agent (object):
         self.trainer = Trainer(self, training)
 
     def clear(self):
+        """ Clear the memory queue and the epsiode """
         self.states = deque(maxlen = self.max_queue)
         self.actions = deque(maxlen = self.max_queue)
         self.rewards = deque(maxlen = self.max_queue)
@@ -30,9 +38,12 @@ class Agent (object):
     
     def act(self, env):
         """
-        Choose action, apply action to environment, and recieve reward
-        Parameters:
-            env (environment.Env) - Environment of the agent
+        Choose action, apply action to environment, and recieve a reward
+
+        Args:
+            env: (Environment) Environment of the agent
+        Returns:
+            (Environment Observation) The output of an environment observation
         """
         # Current environment state
         state = env.observe()
@@ -48,25 +59,28 @@ class Agent (object):
         # Return the results
         return observation
 
+    def get_action(self, state):
+        """ Get the action to play on a given state """
+        return None
+
     def train(self, mode = None, **kwargs):
+        """ Trains an agent (needed for trainer API) """
         pass
 
     def new_episode(self):
-        """Reset the memory of an agent for a new episode"""
+        """ Reset the episode memory """
         self.episode = []
 
     def add_episode(self, state, action, reward):
-        """Adds a move of a game to a game episode"""
+        """ Adds a move of a game to a game episode """
         self.episode.append((state, action, reward))
 
     def save_episode(self, use_final = True):
         """
         Saves an episode to the game records
-        Parameters:
-            use_final (bool) - Save the episode with the final reward for
-                                    each reward in episode
-            reward (float) - If not using final, other reward to use for
-                                    each reward in episode
+
+        Args:
+            use_final: (bool) Save each move with the final reward of the game
         """
         # If episode hasn't been used, do nothing
         if len(self.episode) == 0:
@@ -75,51 +89,34 @@ class Agent (object):
         if use_final:
             # Fetch final reward
             final_reward = self.episode[-1][2]
-            # TODO : Make this automatic
-            if final_reward != -10:
-                self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
-        # Loop through each item in episode
+            # Apply to each move
+            self.episode = [(s, a, final_reward) for s, a, _ in self.episode]
+        # Add move to memory queue
         for s, a, r in self.episode:
-            # Add to game record
             self.states.append(s)
             self.actions.append(a)
             self.rewards.append(r)
-        # Train episodically (may be avoided within the function w/ params params)
+        # Train episodically (according to training paramters)
         if self.params["mode"] in ["episodic", "replay"]:
             self.train(self.params["mode"])
         # Clear episode
         self.new_episode()
 
     def save(self, **kwargs):
-        """Saves an agent to a file"""
+        """ Saves an agent to a file """
         pass
 
     def change_training(self, **kwargs):
-        """Changes the params parameters"""
+        """ Changes the training paramters """
         for key in kwargs:
             self.params[key] = kwargs[key]
 
-    def get_Q(self, state):
+    def get_q(self, state):
+        """ Get the Q confidence value for a board (for reinforcement API) """
         return zeros(state.shape)
 
     def is_over(self, board):
-        """Checks if game is over"""
-        # Rows
-        for row in board:
-            if np_sum(row) == board.shape[0]:
-                return True
-        # Columns (row in transpose of b)
-        for col in board.T:
-            if np_sum(col) == board.shape[0]:
-                return True
-        # Diagonals
-        # Top left to bottom right
-        if np_sum(board * identity(self.size)) >= self.size:
-            return True
-        # Bottom left to top right
-        if np_sum(board * flip(identity(self.size), 1)) >= self.size:
-            return True
-        # Otherwise game is not over
+        """ Checks if a game is over """
         return False
 
     @property

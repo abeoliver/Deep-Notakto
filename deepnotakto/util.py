@@ -97,7 +97,7 @@ def softmax(x):
 def create_board(index, b_size = 3):
     """ Design a notakto board with given placed pieces """
     x = np.zeros([b_size, b_size], dtype = np.int8)
-    if type(index) != list:
+    if not isinstance(index, list):
         x[index // b_size, index % b_size] = 1
     else:
         for i in index:
@@ -110,6 +110,18 @@ def move_to_vec(move, size):
     x = np.zeros([size * size], dtype = np.int32)
     x[move] = 1
     return np.reshape(x, [size, size])
+
+
+def chunk(l, n):
+    """
+    Yield successive n-sized chunks from l
+    Taken from https://stackoverflow.com/questions/312443/
+                how-do-you-split-a-list-into-evenly-sized-chunks
+    """
+    if n < 0:
+        yield l
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
 
 
 def rotate_move(move, size, cw = False):

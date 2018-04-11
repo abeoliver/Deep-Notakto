@@ -6,7 +6,7 @@
 
 from deepnotakto.agents.agent import Agent
 from deepnotakto.agents.human import Human
-from deepnotakto.agents.Q import Q
-from deepnotakto.agents.qtree import QTree
+from deepnotakto.agents.Q import Q, QTrainer
+from deepnotakto.agents.qtree import QTree, QTreeTrainer
 
 __all__ = dir()

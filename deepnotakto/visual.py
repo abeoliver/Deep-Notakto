@@ -288,7 +288,7 @@ class NotaktoGame (Visualization):
             # If the player is not a human, play the move before game loop
             if not is_h:
                 if self.show_confidences:
-                    confidences = player.get_Q(self.env.observe())
+                    confidences = player.get_q(self.env.observe())
                 self.display(self.env.observe(), confidences,
                              "WAITING ON PLAYER 1", next = False)
                 player.act(self.env)
@@ -354,7 +354,7 @@ class NotaktoGame (Visualization):
                     # Play the agent corresponding to the current turn
                     player = [self.a1, self.a2][self.env.turn % 2]
                     if self.show_confidences:
-                        confidences = player.get_Q(self.env.observe())
+                        confidences = player.get_q(self.env.observe())
                     self.display(self.env.observe(), confidences,
                                  "WAITING FOR PLAYER {}".format(
                                      1 + (self.env.turn % 2)),

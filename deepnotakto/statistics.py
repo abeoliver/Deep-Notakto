@@ -4,19 +4,22 @@
 #  Abraham Oliver, 2018                                               #
 #######################################################################
 
-import matplotlib.pyplot as plt
 from pickle import load
+
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import linear_model
 
 
 def get_stats(name, add_suffix = False):
+    """ Get a statistics file """
     with open(name + ".stats" if add_suffix else name, "rb") as f:
         s = load(f)
     return s
 
 
 def group_stats_by_type(stats):
+    """ Group statistics by the stat rather than by the iteration """
     # Get the list of stat types from an element
     if list(stats.keys())[0] == "meta":
         meta = True
@@ -43,6 +46,7 @@ def group_stats_by_type(stats):
 
 
 def plot_value(stats, values, fig_size = (10, 4), best_fit = True, **kwargs):
+    """ Plot a given value from the satistics dictionary """
     if type(values) == str:
         values = [values]
     plt.figure(figsize = fig_size)

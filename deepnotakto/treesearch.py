@@ -378,7 +378,7 @@ class GuidedNode (Node):
             raise(IndexError("Unvisited list is empty"))
 
     def action_space_probs(self, state):
-        return self.network.get_Q(state)
+        return self.network.get_q(state)
 
     def choose_by_visits(self):
         s = sorted(self.children, key = lambda c: c.n, reverse = True)

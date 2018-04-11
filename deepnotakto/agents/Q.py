@@ -4,28 +4,6 @@
 #  Abraham Oliver, 2018                                               #
 #######################################################################
 
-# MIT License
-#
-# Copyright (c) 2018 Abraham Oliver
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 # Import dependencies
 import pickle
 from copy import copy
@@ -35,7 +13,7 @@ import numpy as np
 import tensorflow as tf
 
 import deepnotakto.util as util
-from deepnotakto.agents.agent import Agent
+from deepnotakto.agents import Agent
 from deepnotakto.trainer import Trainer
 
 
@@ -48,7 +26,7 @@ class Q (Agent):
         get_activation_function - Get a desired tf-compatible activation func
         target - Calculate the target policy for a given data point
         get_action - Get the move vector to play on a given state
-        get_Q - Get a Q-value matrix (a square policy vector)
+        get_q - Get a Q-value matrix (a square policy vector)
         get_passable_state - Clean a given state and return a valid model input
         update - Run a training update over given training data
         duplicative_dict - Get a dict that is sufficient to replicate the agent
@@ -154,8 +132,6 @@ class Q (Agent):
             force: (bool) Initialize, even if already initialized
             params: (dict) Training parameters
             KWARGS passed to trainer initializer
-        Returns:
-            None
         """
         if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
@@ -194,8 +170,6 @@ class Q (Agent):
         Args:
             weights: (List of (N, M) arrays) Initial weight matricies
             biases: (List of (1, N) arrays) Initial bias matricies
-        Returns:
-            None
         """
         with self._graph.as_default():
             with tf.name_scope("model"):
@@ -303,9 +277,7 @@ class Q (Agent):
         Initialize weight matricies either randomly or with a given set
 
         Parameters:
-            w: (List of (N, M) arrays) Initial weight matricies
-        Returns:
-            None
+            w: (array[]) Initial weight matricies
         """
         # If weights are supplied, use those
         if w is not None:
@@ -332,9 +304,7 @@ class Q (Agent):
         Initialize biases
 
         Args:
-            b: (List of (1, N) arrays) Initial bias matricies
-        Returns:
-            None
+            b: (array[]) Initial bias matricies
         """
         # If supplied, use given
         if b is not None:
@@ -358,10 +328,10 @@ class Q (Agent):
         Recursively compute x_i.W_i + b_i for the layers of the network
 
         Args:
-            inp: ((1, N) array) Input into the layer
+            inp: (array) Input into the layer
             n: (int) Current layer being calculated
         Returns:
-            (1, N) array - Output of the given layer
+            (array) Output of the given layer
         """
         # Output of layer
         out = tf.add(tf.matmul(inp, self.w[n], name = "feedmul{}".format(n)),
@@ -383,16 +353,16 @@ class Q (Agent):
         Calculate the target values for the network in a given situation
 
         Args:
-            state: ((N, N) array) Environment state
-            action: ((N, N) array) Agents taken action
+            state: (array) Environment state
+            action: (array) Agents taken action
             reward: (float) Scalar reward for the action on the state
         Returns:
-            (N, N) array - Target Q matrix for the given data
+            array - Target Q matrix for the given data
         """
         # Apply action
         new_state = np.add(state, action)
         # Get current Q values
-        q = np.reshape(np.copy(self.get_Q(state)), -1)
+        q = np.reshape(np.copy(self.get_q(state)), -1)
         # If the game is over, return a new Q updated with the observed reward
         if self.is_over(new_state):
             q[np.argmax(action)] = reward
@@ -404,25 +374,24 @@ class Q (Agent):
                 # Make the move
                 temp_state = np.add(move, new_state)
                 # Find the max Q value
-                new_q_max.append(np.max(self.get_Q(temp_state)))
+                new_q_max.append(np.max(self.get_q(temp_state)))
             # Get max of all Q values
             max_q = np.max(new_q_max)
             # Return a new Q vector updated by the Bellman equation
             q[np.argmax(action)] = reward + self.gamma * max_q
-            if False:
-                print("Future        -- {}".format(max_q))
-                print("Bellman       -- {}".format(q[np.argmax(action)]))
-                print("Delta         -- {}".format(q[np.argmax(action)] - c))
         return np.reshape(q, new_state.shape)
 
     def get_action(self, state):
         """
         Creates an action vector for a given state
+
+        Args:
+            state: (array) Environment state
         Returns:
-            (N, M) array - An action vector
+            (array) An action vector
         """
         # Get Q-values
-        qs = self.get_Q(state)
+        qs = self.get_q(state)
         # Use softmax selection if requested
         if not self.deterministic and self.temperature > .01:
             probs = util.softmax(np.reshape(qs, -1) / self.temperature)
@@ -444,18 +413,20 @@ class Q (Agent):
             action[max_index] = 1
             return np.reshape(action, state.shape)
 
-    def get_Q(self, state):
+    def get_q(self, state):
         """
         Get action Q-values
-        Parameters:
-            state ((N, N) array) - Current environment state
+
+        Args:
+            state: (array) Current environment state
         Returns:
-            (N, N) array - Q matrix for the given state
+            (array) Q matrix for the given state
         """
         # Pass the state to the model and get array of Q-values
-        return np.reshape(self.y.eval(session = self.session,
-                                      feed_dict = {self.x: [np.reshape(state, -1)]})[0],
-                          state.shape)
+        return np.reshape(
+            self.y.eval(session = self.session,
+                        feed_dict = {self.x: [np.reshape(state, -1)]})[0],
+            state.shape)
 
     def get_passable_state(self, state):
         """
@@ -471,36 +442,34 @@ class Q (Agent):
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
         Update (train) a model over a given set of states and targets
-        Parameters:
-            states (List of (N, N) arrays) - States to be trained over (inputs)
-            targets (List of (N, N) arrays) - Targets to be trained over (labels)
+
+        Args:
+            states (array[]) - States to be trained over (inputs)
+            targets (array[]) - Targets to be trained over (labels)
             learn_rate (float) - Learning rate for the update
             beta (float) - L2 Regularization constant (default self.beta)
         Returns:
-            tf.summary - The output of the merged summary operation
+            (tf.summary) The output of the merged summary operation
         """
         # Reshape states and targets of (N, N) to (1, N * N)
-        STATES = np.array([np.reshape(s, -1) for s in states], dtype = np.float32)
-        TARGETS = np.array([np.reshape(t, -1) for t in targets], dtype = np.float32)
+        states_ = np.array([np.reshape(s, -1) for s in states],
+                           dtype = np.float32)
+        targets_ = np.array([np.reshape(t, -1) for t in targets],
+                            dtype = np.float32)
         # Default to self.beta if no beta is given
         if beta is None:
             beta = self.beta
         # Construct feed dictionary for the optimization step
-        feed_dict = {self.x: STATES, self.q_targets: TARGETS,
+        feed_dict = {self.x: states_, self.q_targets: targets_,
                      self.learn_rate: learn_rate, self.beta_ph: beta,
                      self._clipping_threshold: self.clip_thresh}
         # Optimize the network and return the tensorboard summary information
-        summary = self.session.run([self.summary_op, self.update_op], feed_dict = feed_dict)[0]
-        if False:
-            print("******************")
-            print("PLAYER :: {}".format(self.name))
-            for i in range(len(TARGETS)):
-                print((TARGETS[i] - self.get_Q(STATES[i])).reshape(states[0].shape))
-                print()
-            print("******************")
+        summary = self.session.run([self.summary_op, self.update_op],
+                                   feed_dict = feed_dict)[0]
         return summary
 
     def duplicative_dict(self):
+        """ Saveable dictionary able to replicate the agent """
         return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
                 "weights": self.get_weights(), "biases": self.get_biases(),
                 "gamma": self.gamma, "name": self.name,
@@ -515,6 +484,7 @@ class Q (Agent):
     def save(self, name):
         """
         Save the models parameters in a .npz file
+
         Args:
             name: (string) File name for save file
         """
@@ -522,14 +492,16 @@ class Q (Agent):
             pickle.dump(self.duplicative_dict(), outFile)
 
     def copy(self):
+        """ Create a perfect replica of the agent """
         return self.__class__(**self.duplicative_dict())
 
     def variable_summaries(self, var, name):
         """
-        Summarize mean/max/min/sd & histogram for TensorBoard visualization
-        Parameters:
-            var (tf Variable) - Variable to summarize
-            name (name) - Name for the variable in TensorBoard
+        Summarize mean, max, min, sd, histogram for TensorBoard visualization
+
+        Args:
+            var: (tf.Variable) Variable to summarize
+            name: (name) Name for the variable in TensorBoard
         """
         with tf.name_scope("summary"):
             with tf.name_scope(name):
@@ -540,30 +512,38 @@ class Q (Agent):
                 tf.summary.histogram('histogram', var)
 
     def get_layer(self, inp, layer):
-        """Passes an input through the model to a particular layer"""
+        """ Passes an input through the model until a particular layer """
         # Pass the state to the model and get array of Q-values
         return self.activation_layers[layer].eval(
             session = self.session,
             feed_dict={self.x: [np.reshape(inp, -1)]})[0]
 
     def get_node_weights(self, layer, node, reshape = -1):
-        """Gets the weight matrix for a given node"""
+        """ Gets the weight matrix for a given node """
         return np.reshape(self.get_weight(layer)[:, node], reshape)
 
     def get_weights(self, index = None):
-        """Gets all weight matricies"""
+        """ Gets all weight matricies """
         if index is None:
-            return [self.w[i].eval(session = self.session) for i in range(len(self.w))]
+            return [self.w[i].eval(session = self.session)
+                    for i in range(len(self.w))]
         return self.w[index].eval(session = self.session)
 
     def get_biases(self, index = None):
-        """Gets all bias matricies"""
+        """ Gets all bias matricies """
         if index is None:
-            return [self.b[i].eval(session = self.session) for i in range(len(self.b))]
+            return [self.b[i].eval(session = self.session)
+                    for i in range(len(self.b))]
         return self.b[index].eval(session = self.session)
 
     def set_weights(self, new_w, index = None):
-        """Replace all weights with new_w"""
+        """
+        Replace either all weights or a given weight layer with new parameters
+
+        Args:
+            new_w: (array or array[]) New weights to be used
+            index: (int or None) Desired weight layer or None for all layers
+        """
         def set_weight(obj, i, w):
             if w.shape == obj.w[i].shape:
                 obj.session.run(obj._weight_assign[i],
@@ -578,7 +558,13 @@ class Q (Agent):
             set_weight(self, index, new_w)
 
     def set_biases(self, new_b, index = None):
-        """Replace all biases with new_b"""
+        """
+        Replace either all biases or a given bias layer with new parameters
+
+        Args:
+            new_b: (array or array[]) New biases to be used
+            index: (int or None) Desired bias layer or None for all layers
+        """
         def set_bias(obj, i, b):
             if b.shape == obj.b[i].shape:
                 obj.session.run(obj._bias_assign[i],
@@ -595,9 +581,12 @@ class Q (Agent):
     def _l2_recurse(self, ws, n = 0):
         """
         Recursively adds all weight norms
-        Parameters:
-            ws (List of (N, M) arrays) - List of weights to be normed and added
-            n (int) - Index for tensor naming
+
+        Args:
+            ws: (arrays[]) List of weights to be normed and added
+            n: (int) Index for tensor naming
+        Returns:
+            (float) Total L2 norm
         """
         if len(ws) <= 1:
             return tf.nn.l2_loss(ws[0], name="L2_{}".format(n))
@@ -606,42 +595,30 @@ class Q (Agent):
                           self._l2_recurse(ws[1:], n + 1))
 
     def get_l2(self):
-        """Gets the L2 norm of the weights"""
+        """ Gets the L2 norm of the weights """
         return self.l2.eval(session = self.session)
 
     def action_space(self, state):
         """
         Returns a list of all possible moves (reguardless of win / loss)
-        Parameters:
-            state ((N, N) array) - Current board state
+
+        Args:
+            state: (array) Current board state
         Returns:
-            List of (N, N) arrays - All legal moves for the given board
-        Note:
-            An almost identical function exists in the game environment but the
-            agent must have an independent mehtod to generate possible moves in
-            order to calculate target Q values
+            (array[]) - All legal moves for the given board
         """
-        # Get state
-        s = copy(state)
-        # All remaining moves
-        remaining = []
-        # Loop over both axes
-        for i in range(s.shape[0]):
-            for j in range(s.shape[1]):
-                # If there is an empty space, add the move to remaining moves
-                if s[i, j] == 0:
-                    z = np.zeros(b.shape, dtype = np.int32)
-                    z[i, j] = 1
-                    remaining.append(z)
-        return remaining
+        return []
 
     def train(self, mode = "", **kwargs):
+        """ Train the model using the trainer """
         self.trainer.train(mode, **kwargs)
 
     def training_params(self, training = None):
+        """ Use new training parameter dictionary """
         self.trainer.training_params(training)
 
     def change_param(self, name, value):
+        """ Change a given training parameter"""
         self.trainer.change_param(name, value)
 
     @property
@@ -656,10 +633,10 @@ class Q (Agent):
             self._epsilon_func = epsilon_func
         elif type(epsilon_func) in [float, int]:
             self._epsilon_func = lambda x: epsilon_func
-        elif type(epsilon_func) == type(lambda x: None):
+        elif isinstance(epsilon_func, lambda x: None):
             self._epsilon_func = epsilon_func
         else:
-            raise ValueError("This value is not permitted as an epsilon schedule")
+            raise ValueError("This value is not a valid epsilon schedule")
 
     @property
     def iteration(self):
@@ -681,7 +658,7 @@ class Q (Agent):
             self._temp_func = temp_func
         elif type(temp_func) in [float, int]:
             self._temp_func = lambda x: temp_func
-        elif type(temp_func) == type(lambda x: None):
+        elif isinstance(temp_func, lambda x: None):
             self._temp_func = temp_func
         else:
             raise ValueError("This value is not a valid temperature schedule")
@@ -701,42 +678,33 @@ class QTrainer (Trainer):
         return {
             "mode": "episodic",
             "learn_rate": 1e-4,
-            "rotate": False,
             "epochs": 1,
             "batch_size": 1,
             "replay_size": 20
         }
 
     def online(self, state, action, reward, learn_rate = None, **kwargs):
-        """Gets a callable function for online params"""
+        """ Train over a single state, action, and reward """
         self.offline([state], [action], [reward], 1, 1, learn_rate, **kwargs)
 
     def offline(self, states = None, actions = None, rewards = None,
-                batch_size = None, epochs = None, learn_rate = None,
-                rotate = None):
+                batch_size = None, epochs = None, learn_rate = None):
         """
-        Trains the agent over a set of state, action, reward triples
-        Parameters:
-            states (List of (N, N) arrays) - List of states
-            actions (List of (N, N) arrays) - Actions taken on states
-            rewards (List of floats) - Rewards for each action
-            batch_size (int) - Number of samples in each minibatch
-            epochs (int) - Number of iterations over the entire dataset
-            learn_rate (float) - Learning rate
-            rotate (bool) - Rotate matricies for transformation invariant learning
-        Note:
-            Targets are caculated at the beginning of each epoch.
-            Therefore, all targets in a given epochs use the same
-            Q-function and are not effected by the others in the
-            batch
+        Trains the agent over a sets of state, action, and reward
 
+        Note:
             If states, actions, and rewards are None, full history used
+
+        Args:
+            states: (array[]) List of states
+            actions: (array[]) Actions taken on states
+            rewards: (float[]) Rewards for each action
+            batch_size: (int) Number of samples in each minibatch
+            epochs: (int) Number of iterations over the entire dataset
         """
         # Default to defaults if parameters not given
         if learn_rate is None:
             learn_rate = self.params["learn_rate"]
-        if rotate is None:
-            rotate = self.params["rotate"]
         if epochs is None:
             epochs = self.params["epochs"]
         if batch_size is None:
@@ -749,14 +717,13 @@ class QTrainer (Trainer):
         for epoch in range(epochs):
             # Calculate targets from states, actions, and rewards
             targets = [self.agent.target(state, action, reward)
-                       for (state, action, reward) in zip(states, actions, rewards)]
-            # Rotate if requested
-            if rotate:
-                states, targets = self.get_rotations(states, targets)
+                       for (state, action, reward) in
+                       zip(states, actions, rewards)]
             # Separate into batches and train
             summary = self.batch(states, targets, batch_size, learn_rate)
         # Record if Tensorboard recording enabled and write summary to file
-        if self.record and (self.iteration % self.tensorboard_interval == 0) and summary != None:
+        if self.record and (self.iteration % self.tensorboard_interval == 0)\
+                and summary is not None:
             self.writer.add_summary(summary, self.iteration)
         # Increase iteration counter
         self.iteration += 1
@@ -764,11 +731,14 @@ class QTrainer (Trainer):
     def batch(self, states, targets, batch_size, learn_rate = None):
         """
         Trains the agent over a batch of states and targets
-        Parameters:
-            states (List of (N, N) arrays) - List of states
-            targets (List of (N, N) arrays) - List of targets for each state
-            batch_size (int) - Number of samples in each minibatch
-            learn_rate (float) - Learning rate
+
+        Args:
+            states: (array[]) List of states
+            targets: (array[]) List of targets for each state
+            batch_size: (int) Number of samples in each minibatch
+            learn_rate: (float) Learning rate
+        Returns:
+            (tensorboard summary) Training summary for tensorboard recording
         """
         # Default learning rate if none provided
         if learn_rate is None:
@@ -778,12 +748,11 @@ class QTrainer (Trainer):
         order = list(range(len(states)))
         shuffle(order)
         # Chunk index list into batches of desired size
-        batches = list(self.chunk(order, batch_size))
+        batches = list(util.chunk(order, batch_size))
         # Train over each minibatch
         summary = None
         for batch in batches:
-            # Get the states and targets for the indicies in the batch and update
             summary = self.agent.update([states[b] for b in batch],
-                                         [targets[b] for b in batch],
-                                         learn_rate)
+                                        [targets[b] for b in batch],
+                                        learn_rate)
         return summary
