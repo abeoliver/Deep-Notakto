@@ -29,7 +29,7 @@ class Node (object):
     Properties:
         state (State) - State that the node represents
         parent (Node or None) - Parent node
-        edge (Edge or None) - Action from parent -> current
+        edge (Edge or None) - Previous action from parent -> current
         children (Node[]) - Explored part of next state space
         visits (int) - Number of games played through this node
         wins (int) - Number of games won through this node
@@ -40,7 +40,7 @@ class Node (object):
     def __init__(self, state, parent = None, edge = None, visits = 0,
                  wins = 0, remove_unvisited_losses = True):
         """
-        Creates a Node objedct
+        Creates a Node object
         Args:
             state: (State) State that the node representd
             parent: (State) State before action was taken
@@ -71,7 +71,8 @@ class Node (object):
 
     def get_unvisited(self, remove_losses = True):
         self.unvisited, self.unvisited_probs = self.action_space(
-            remove_losses = remove_losses, get_probs = True)
+            remove_losses = remove_losses, get_probs = True
+        )
 
     def __str__(self):
         """ Allow for pretty printing of a node """
@@ -110,12 +111,11 @@ class Node (object):
     def display_children(self):
         """ Pretty print all children """
         for i in self.children:
-            print(i)
-            print()
+            print(str(i) + "\n")
 
     def get_player(self):
         """ Get the current player at the node """
-        return 0
+        return self.player
 
     def action_space(self, state = None, remove_losses = False,
                      get_probs = True):
