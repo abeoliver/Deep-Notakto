@@ -119,7 +119,7 @@ class NotaktoGame (Visualization):
     def __init__(self, env, a1, a2, max_games = -1, piece_size = 100,
                  show_confidences = True):
         """
-        Initalizes a GUI Notakto game over an environment between two players
+        A GUI Notakto game over an environment between two players
 
         Args:
             env: (Environment) Environment to play a game on
