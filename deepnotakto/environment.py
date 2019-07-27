@@ -39,6 +39,12 @@ class Env (object):
             }
         else:
             self.rewards = rewards
+
+    def legal(self, action, state = None):
+        return True
+
+    def current_player(self, state = None):
+        return 1
     
     def reset(self):
         """ Reset board """
@@ -58,11 +64,11 @@ class Env (object):
         Returns:
             (int) Reward for given action
         """
+        # If illegal move, highly negative reward
+        if not self.legal(action, self.state):
+            return self.rewards["illegal"]
         # Play the move on a copy of the board
         new_state = self.play_move_on_state(self.state, action)
-        # If illegal move, highly negative reward
-        if self.is_illegal(new_state):
-            return self.rewards["illegal"]
 
         # Rewards based on winner
         winner = self.winner(new_state)
@@ -91,7 +97,7 @@ class Env (object):
         # Calculate move effect
         moved = self.play_move_on_state(self.state, action)
         # Play the move if the move isn't legal
-        if self.illegal():
+        if not self.legal():
             illegal = True
         else:
             self.state = moved
@@ -122,4 +128,4 @@ class Env (object):
     @property
     def player(self):
         """ Get the number of the player currently playing """
-        return self.turn % 2 + 1
+        return self.current_player()

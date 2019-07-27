@@ -7,7 +7,6 @@
 import numpy as np
 import pickle, hashlib
 from time import time, localtime, asctime
-from numpy.random import binomial, random
 
 
 def load_agent(filename, CLASS):
@@ -94,24 +93,6 @@ def softmax(x):
     return soft + (np.ones(soft.shape) * ((1.0 - actual_sum) / soft.size))
 
 
-def create_board(index, b_size = 3):
-    """ Design a notakto board with given placed pieces """
-    x = np.zeros([b_size, b_size], dtype = np.int8)
-    if not isinstance(index, list):
-        x[index // b_size, index % b_size] = 1
-    else:
-        for i in index:
-            x[i // b_size, i % b_size] = 1
-    return x
-
-
-def move_to_vec(move, size):
-    """ Translate a index-based move to a matrix-based move """
-    x = np.zeros([size * size], dtype = np.int32)
-    x[move] = 1
-    return np.reshape(x, [size, size])
-
-
 def chunk(l, n):
     """
     Yield successive n-sized chunks from l
@@ -124,47 +105,8 @@ def chunk(l, n):
         yield l[i:i + n]
 
 
-def rotate_move(move, size, cw = False):
-    """ Rotate an index-based move (if cw, rotate clockwise, otherwise ccw) """
-    if cw:
-        return int(size * (1 + move % size) - 1 - move // size)
-    return int(size * (size - 1 - (move % size)) + (move // size))
-
-
-def reflect_move(move, size):
-    """ Reflects an index-based move across the diagonal """
-    return int((move % size) * size + (move // size))
-
-
-def isomorphic_matrix(m1, m2):
-    """ Checks if two matricies are isomorphic by rotation and reflection """
-    # Check all isomorphisms
-    for _ in range(4):
-        if np.array_equal(m1, m2) or np.array_equal(m1.T, m2):
-            return True
-        # Rotate the target (rotates back to identity before it moves on)
-        m1 = rotate(m1)
-    return False
-
-
 def bin_to_array(b):
     """ Convert a binary state representation to an array """
     a = np.array([int(i) for i in str(b)])
     size = int(np.sqrt(a.size))
     return np.reshape(a, [size, size])
-
-
-def array_to_bin(a):
-    """ Convert an array state representation to binary """
-    return ''.join([str(int(i)) for i in np.reshape(a, -1).tolist()])
-
-
-def get_move_dict(name, size):
-    """ Get a move dictionary from a file """
-    with open(name) as f:
-        d = {}
-        for line in f:
-            parts = [str(bin(int(i)))[2:].zfill(size * size)
-                     for i in line.rstrip().split()]
-            d[parts[0]] = bin_to_array(parts[1])
-    return d

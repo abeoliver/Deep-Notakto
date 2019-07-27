@@ -15,7 +15,7 @@ from deepnotakto.agents import QTreeTrainer as BaseQTreeTrainer
 from deepnotakto.environment import Env as BaseEnv
 from deepnotakto.treesearch import GuidedNode as BaseGuidedNode
 from deepnotakto.treesearch import Node as BaseNode
-from deepnotakto.util import array_in_list, rotate, create_board
+from deepnotakto.util import array_in_list, rotate
 
 
 class Node (BaseNode):
@@ -202,12 +202,12 @@ class Env (BaseEnv):
         else:
             self.rewards = rewards
 
-    def illegal(self, state = None):
+    def legal(self, state = None):
         if state is None:
             state = self.state
         if np.max(state) > 1:
-            return True
-        return False
+            return False
+        return True
 
     def play_move_on_state(self, state, action):
         return np.add(state, action)
@@ -227,11 +227,12 @@ class Env (BaseEnv):
         Returns:
             (int) Reward for given action
         """
+        # If illegal move, highly negative reward
+        if not self.legal(action, self.state):
+            return self.rewards["illegal"]
+
         # Play the move on a copy of the board
         new_state = self.play_move_on_state(self.state, action)
-        # If illegal move, highly negative reward
-        if self.illegal(new_state):
-            return self.rewards["illegal"]
 
         # Rewards based on winner
         winner = self.winner(new_state)
@@ -310,6 +311,7 @@ class RandomAgent (BaseAgent):
             return create_board(choice(possible), state.shape[0])
 
 
+# Utility functions
 def measure(agent, **stats):
     """ Measure an agent and return the results along with any passed stats """
     # Zero board
@@ -410,3 +412,14 @@ def _action_space(state, player = 0, remove_losses = False,
     if get_probs:
         return remaining, remain_probs
     return remaining
+
+
+def create_board(index, b_size = 3):
+    """ Design a notakto board with given placed pieces """
+    x = np.zeros([b_size, b_size], dtype = np.int8)
+    if not isinstance(index, list):
+        x[index // b_size, index % b_size] = 1
+    else:
+        for i in index:
+            x[i // b_size, i % b_size] = 1
+    return x

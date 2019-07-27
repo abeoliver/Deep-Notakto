@@ -26,3 +26,5 @@ deepnotakto/tensorboard/
 deepnotakto/death/
 
 deepnotakto/local_tests\.py
+
+\.ipynb_checkpoints/
