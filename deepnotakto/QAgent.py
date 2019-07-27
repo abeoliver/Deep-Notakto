@@ -6,18 +6,17 @@
 
 # Import dependencies
 import pickle
-from copy import copy
 from random import choice, shuffle
 
 import numpy as np
 import tensorflow as tf
 
 import deepnotakto.util as util
-from deepnotakto.agents import Agent
-from deepnotakto.trainer import Trainer
+from deepnotakto import Agent
+from deepnotakto import Trainer
 
 
-class Q (Agent):
+class QAgent (Agent):
     """
     A Deep-Q agent
 
@@ -70,7 +69,7 @@ class Q (Agent):
             kwargs: (dict) Arguments to pass to trainer
         """
         # Parent initializer
-        super(Q, self).__init__(params, max_queue = max_queue)
+        super(QAgent, self).__init__(params, max_queue = max_queue)
         # The length of the side of the board
         self.size = game_size
         # Put together the layers

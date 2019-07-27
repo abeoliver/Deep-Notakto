@@ -9,9 +9,10 @@ from random import choice
 
 import numpy as np
 
-from deepnotakto.agents import Agent as BaseAgent
-from deepnotakto.agents import QTree as BaseQTree
-from deepnotakto.agents import QTreeTrainer as BaseQTreeTrainer
+from deepnotakto.agent import Agent as BaseAgent
+from deepnotakto.agent import Human as BaseHuman
+from deepnotakto import QTree as BaseQTree
+from deepnotakto import QTreeTrainer as BaseQTreeTrainer
 from deepnotakto.environment import Env as BaseEnv
 from deepnotakto.treesearch import GuidedNode as BaseGuidedNode
 from deepnotakto.treesearch import Node as BaseNode
@@ -309,6 +310,30 @@ class RandomAgent (BaseAgent):
         else:
             # If all moves are losses, choose any
             return create_board(choice(possible), state.shape[0])
+
+class Human (BaseHuman):
+    def get_action(self, state):
+        """ Get the action from the user """
+        # Continue prompting until a valid move is made
+        while True:
+            # Prompt for user choice
+            inp = input("Next Piece: ")
+            # Exit program if human desires
+            if inp == "exit":
+                sys.exit()
+            # Split move into [row, column]
+            row, col = inp.split()
+            if type(row) != int or row > state.shape[0] or row < 1:
+                print("Please enter valid position")
+                continue
+            elif type(col) != int or col > state.shape[0] or col < 1:
+                print("Please enter valid position")
+                continue
+            row = int(row) - 1
+            col = int(col) - 1
+            action = np.zeros(state.shape, dtype = np.int32)
+            action[row, col] = 1
+            return action
 
 
 # Utility functions

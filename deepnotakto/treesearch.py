@@ -401,12 +401,12 @@ def load(filename):
         return pickle_load(f)
 
 
-def search(root_node, simulations = 100, modified = True):
+def tree_search(root_node, simulations = 100, modified = True):
     """
     Run a monte-carlo tree search from a node
 
     Note: a modified search uses the value of the node to determine the
-    estimation of winning instead of rollouts consistent with Silver et al
+    estimation of winning instead of rollouts, consistent with Silver et al
 
     Args:
         root_node: (Node) Root node to start search from

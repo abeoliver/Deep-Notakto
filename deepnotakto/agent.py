@@ -5,11 +5,9 @@
 #######################################################################
 
 from collections import deque
+from numpy import zeros
 
-from numpy import sum as np_sum
-from numpy import zeros, identity, flip
-
-from deepnotakto.trainer import Trainer
+from deepnotakto import Trainer
 
 
 class Agent (object):
@@ -38,7 +36,7 @@ class Agent (object):
     
     def act(self, env):
         """
-        Choose action, apply action to environment, and recieve a reward
+        Choose action, apply action to environment, and receive a reward
 
         Args:
             env: (Environment) Environment of the agent
@@ -126,3 +124,15 @@ class Agent (object):
     @params.setter
     def params(self, value):
         self.trainer.training_params(value)
+
+
+class Human (Agent):
+    def __init__(self):
+        """ Initializes a human agent """
+        # Call parent initializer
+        super(Human, self).__init__()
+        self.name = "Human"
+
+    def get_action(self, state):
+        """ Get the action from the user """
+        return None

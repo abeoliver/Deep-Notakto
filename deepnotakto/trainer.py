@@ -8,8 +8,6 @@ from random import sample
 
 import tensorflow as tf
 
-from deepnotakto.util import rotate as rotate_func
-
 
 class Trainer (object):
     def __init__(self, agent, params = None, tensorboard_path = None,

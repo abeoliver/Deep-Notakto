@@ -1,25 +1,23 @@
 #######################################################################
 #  Can Deep Reinforcement Learning Solve Misère Combinatorial Games?  #
-#  File: agents/qtree.py                                              #
+#  File: agents/QTree.py                                              #
 #  Abraham Oliver, 2018                                               #
 #######################################################################
 
 # Import dependencies
 from collections import deque
-from copy import copy
-from pickle import dump
 from random import shuffle, sample
 
 import numpy as np
 import tensorflow as tf
 
 import deepnotakto.util as util
-from deepnotakto.agents import Q
-from deepnotakto.trainer import Trainer
-from deepnotakto.treesearch import search, GuidedNode
+from deepnotakto import QAgent
+from deepnotakto import Trainer
+from deepnotakto import tree_search, GuidedNode
 
 
-class QTree (Q):
+class QTree (QAgent):
     """
     An agent using Silver et al's AlphaZero algorithm for training and eval
     
@@ -390,7 +388,7 @@ class QTree (Q):
                 # Separate node from tree and reset it
                 node.separate()
                 # Run a guided search
-                search(node, simulations, modified = guided)
+                tree_search(node, simulations, modified = guided)
                 # Save the information from this node
                 states.append(node.state)
                 policy = node.get_policy(self.default_temp)
@@ -461,7 +459,7 @@ class QTree (Q):
         node = self.new_node(state = state, network = self)
         if not node.action_space():
             # Run a guided search
-            search(node, self.play_simulations, modified = True)
+            tree_search(node, self.play_simulations, modified = True)
             # Save to memory
             policy = node.get_policy(self.default_temp).reshape(state.shape)
             self.add_episode(state, policy)

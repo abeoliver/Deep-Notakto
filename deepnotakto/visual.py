@@ -115,7 +115,7 @@ class Visualization (object):
         self.buttons = {}
 
 
-class NotaktoGame (Visualization):
+class VisualNotaktoGame (Visualization):
     def __init__(self, env, a1, a2, max_games = -1, piece_size = 100,
                  show_confidences = True):
         """
@@ -143,7 +143,7 @@ class NotaktoGame (Visualization):
         # 2 spacing pieces and a game board
         height = piece_size * (2 + self.side)
         # Call parent intiializer
-        super(NotaktoGame, self).__init__([width, height])
+        super(VisualNotaktoGame, self).__init__([width, height])
         self.env = env
         self.max_games = max_games
         self.a1 = a1
