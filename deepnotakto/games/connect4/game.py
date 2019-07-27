@@ -9,16 +9,10 @@ from random import choice
 
 import numpy as np
 
-from deepnotakto.environment import Env as BaseEnv
-from deepnotakto.agent import Agent as BaseAgent
-from deepnotakto.treesearch import Node as BaseNode
-from deepnotakto.treesearch import GuidedNode as BaseGuidedNode
-
-def main():
-    import os
-    r = RandomAgent()
-    h = Human()
-    play(h,r, -1, clear_func = lambda: os.system('clear'))
+from deepnotakto import Env as BaseEnv
+from deepnotakto import Agent as BaseAgent
+from deepnotakto import Node as BaseNode
+from deepnotakto import GuidedNode as BaseGuidedNode
 
 
 class Env (BaseEnv):
@@ -294,6 +288,3 @@ def _winner(state):
     if does_player_win(state, 2):
         return 2
     return 0
-
-if __name__ == "__main__":
-    main()

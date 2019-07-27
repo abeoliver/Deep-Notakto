@@ -1,4 +1,4 @@
-from deepnotakto.connect4 import main
+from deepnotakto.games.connect4 import main
 
 if __name__ == "__main__":
     main()
