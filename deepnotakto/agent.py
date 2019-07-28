@@ -117,6 +117,9 @@ class Agent (object):
         """ Checks if a game is over """
         return False
 
+    def get_passable_state(self, state):
+        return state
+
     @property
     def params(self):
         return self.trainer.params

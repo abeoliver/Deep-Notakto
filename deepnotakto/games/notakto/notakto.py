@@ -27,12 +27,12 @@ class Node (BaseNode):
         probs = []
         if get_probs:
             probs = self.action_space_probs(state)
-        return _action_space(state = state,
-                             player = self.player,
-                             remove_losses = remove_losses,
-                             remove_isometries = remove_isometries,
-                             get_probs = get_probs,
-                             probs = probs)
+        return action_space(state = state,
+                            player = self.player,
+                            remove_losses = remove_losses,
+                            remove_isometries = remove_isometries,
+                            get_probs = get_probs,
+                            probs = probs)
 
     def play_move(self, move, state = None):
         if state is None:
@@ -54,7 +54,7 @@ class Node (BaseNode):
         """ Get the winner of the game """
         if state is None:
             state = copy(self.state)
-        return _winner(state)
+        return winner(state)
 
     def get_player(self):
         """ Calcualate current player by turn count """
@@ -117,7 +117,7 @@ class QTree (BaseQTree):
 
     def is_over(self, board):
         """ Checks if a game is over """
-        if _winner(board) != 0:
+        if winner(board) != 0:
             return True
         return False
 
@@ -131,9 +131,9 @@ class QTree (BaseQTree):
             (array[]) - All legal moves for the given board
         """
         return [create_board(i, state.shape[0])
-                for i in _action_space(state, remove_isometries = False,
-                                       remove_losses = False,
-                                       get_probs = False)]
+                for i in action_space(state, remove_isometries = False,
+                                      remove_losses = False,
+                                      get_probs = False)]
 
 
 class QTreeTrainer (BaseQTreeTrainer):
@@ -203,10 +203,10 @@ class Env (BaseEnv):
         else:
             self.rewards = rewards
 
-    def legal(self, state = None):
+    def legal(self, action, state = None):
         if state is None:
             state = self.state
-        if np.max(state) > 1:
+        if np.max(self.play_move_on_state(state, action)) > 1:
             return False
         return True
 
@@ -217,7 +217,7 @@ class Env (BaseEnv):
         """Is a loss forced on the next turn"""
         if board is None:
             board = self.board
-        return _forced(board)
+        return forced(board)
 
     def reward(self, action):
         """
@@ -236,8 +236,8 @@ class Env (BaseEnv):
         new_state = self.play_move_on_state(self.state, action)
 
         # Rewards based on winner
-        winner = self.winner(new_state)
-        if winner == 0:
+        winner_player = self.winner(new_state)
+        if winner_player == 0:
             # Positive reward for forcing a loss
             if self.forced(new_state):
                 return self.rewards["forced"]
@@ -250,7 +250,7 @@ class Env (BaseEnv):
     def winner(self, state = None):
         if state is None:
             state = self.state
-        return _winner(state)
+        return winner(state)
 
     def action_space(self, state = None):
         """
@@ -265,9 +265,9 @@ class Env (BaseEnv):
         if not isinstance(state, np.ndarray):
             state = copy(self.board)
         return [create_board(i, state.shape[0])
-                for i in _action_space(state, remove_isometries = False,
-                                       remove_losses = False,
-                                       get_probs = False)]
+                for i in action_space(state, remove_isometries = False,
+                                      remove_losses = False,
+                                      get_probs = False)]
 
     def __str__(self):
         """ Conversion to string """
@@ -286,7 +286,7 @@ class RandomAgent (BaseAgent):
         self.name = "Random"
 
     def get_action(self, state):
-        possible = _action_space(state)
+        possible = action_space(state)
         player = 1 if np.sum(state) % 2 == 0 else 2
         opponent = 2 if player == 1 else 1
         not_loser = []
@@ -295,12 +295,12 @@ class RandomAgent (BaseAgent):
             # Make move temporarily
             new_state = copy(state)
             new_state[m // state.shape[0], m % state.shape[0]] = 1
-            winner = _winner(new_state)
+            winner_player = winner(new_state)
             # If it is a loser, do not consider
-            if winner == opponent:
+            if winner_player == opponent:
                 continue
             # If forced loss on opponent, choose move
-            if _forced(new_state):
+            if forced(new_state):
                 return create_board(m, state.shape[0])
             # If neither, remember that it is a not a losing move
             not_loser.append(m)
@@ -337,34 +337,18 @@ class Human (BaseHuman):
 
 
 # Utility functions
-def measure(agent, **stats):
-    """ Measure an agent and return the results along with any passed stats """
-    # Zero board
-    z = np.zeros(agent.shape)
-    # Value of zero board
-    stats["zero_val"] = agent.value(z)
-    # Size of raw predictions of zero board
-    stats["zero_norm"] = np.linalg.norm(agent.raw(z))
-    # Maximum probability on zero board
-    policy = agent.policy(z)
-    stats["zero_max"] = np.max(policy)
-    # Mean of probabilities on zero board
-    stats["zero_mean"] = np.mean(policy)
-    return stats
-
-
-def _forced(board):
+def forced(board):
     """ Is a loss forced on the next turn """
     # Calculate possible moves for opponent
-    remaining = _action_space(board)
+    remaining = action_space(board)
     # If all are terminal, a loss is forced
     for r in remaining:
-        if _winner(np.add(board, create_board(r, board.shape[0]))) == 0:
+        if winner(np.add(board, create_board(r, board.shape[0]))) == 0:
             return False
     return True
 
 
-def _winner(state):
+def winner(state):
     state = copy(state)
     turn = np.sum(state)
     # Rows
@@ -388,10 +372,10 @@ def _winner(state):
     return 0
 
 
-def _action_space(state, player = 0, remove_losses = False,
-                  remove_isometries = False, get_probs = False, probs = []):
+def action_space(state, player = 0, remove_losses = False,
+                 remove_isometries = False, get_probs = False, probs = []):
     state = copy(state)
-    if _winner(state) != 0:
+    if winner(state) != 0:
         if get_probs:
             return [[], []]
         else:
@@ -404,15 +388,16 @@ def _action_space(state, player = 0, remove_losses = False,
     # Loop over both axes
     for i in range(state.shape[0]):
         for j in range(state.shape[1]):
-            # If there is an empty space
+            # If there is an empty space at this location
             if state[i, j] == 0:
-                # Play move
+                # Play a move there
                 nb = copy(state)
                 nb[i, j] = 1
-                # Remove losers if losses are to be removed
-                winner = _winner(nb)
-                winner_list = [0, 3 - player]
-                if winner in winner_list if remove_losses else [0, 1, 2]:
+                # Find the winner and make a list of non-winner characters
+                winner_player = winner(nb)
+                # Remove the current player if removing losses
+                winner_list = [0, 3 - player] if remove_losses else [0, 1, 2]
+                if winner_player in winner_list:
                     if not remove_isometries:
                         # Add move to returning list
                         remaining.append((i * state.shape[0]) + j)

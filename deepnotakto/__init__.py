@@ -13,11 +13,9 @@ from deepnotakto.treesearch import Node, GuidedNode, tree_search
 from deepnotakto.trainer import Trainer
 from deepnotakto.agent import Agent, Human
 from deepnotakto.QAgent import QAgent
-from deepnotakto.QTree import QTree
-from deepnotakto.QTree import QTreeTrainer
+from deepnotakto.QTree import QTreeTrainer, QTree
 
 from deepnotakto import games
-from deepnotakto.games import notakto
-from deepnotakto.games import connect4
+from deepnotakto.games import notakto, connect4
 
 __all__ = dir()

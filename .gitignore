@@ -28,3 +28,5 @@ deepnotakto/death/
 deepnotakto/local_tests\.py
 
 \.ipynb_checkpoints/
+
+*.stats

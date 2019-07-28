@@ -37,7 +37,7 @@ class QTree (QAgent):
         act - Act on an evironment
         duplicative_dict - Get a dict that is sufficient to replicate the agent
     """
-    def __init__(self, game_size, hidden_layers, guided = True, beta = None,
+    def __init__(self, game_size, layers, guided = True, beta = None,
                  name = None, player_as_input = True, initialize = True,
                  classifier = None, iterations = 0, params = {},
                  max_queue = 100, play_simulations = 1000, mode = "q",
@@ -77,7 +77,7 @@ class QTree (QAgent):
         if name is None:
             name = "QTree({})".format(classifier)
         # Call parent initializer
-        super(QTree, self).__init__(game_size, hidden_layers, 0,
+        super(QTree, self).__init__(game_size, layers, 0,
                                     beta, name, False, classifier,
                                     iterations, params, max_queue, None, None,
                                     activation_func, activation_type)
@@ -132,29 +132,29 @@ class QTree (QAgent):
         """ Initialize computational graph nodes for training procedure """
         with self._graph.as_default():
             # Target probabilities
-            self.prob_targets = tf.placeholder(
+            self.prob_targets = tf.compat.v1.placeholder(
                 tf.float32, shape = [None, self.layers[-1] - 1],
                 name = "probability_targets")
             # Target values
-            self.winner_targets = tf.placeholder(tf.float32, shape = [1, None],
-                                                 name = "winner_target")
+            self.winner_targets = tf.compat.v1.placeholder(
+                tf.float32, shape = [1, None], name = "winner_target")
             # SGD learning rate
-            self.learn_rate = tf.placeholder(tf.float32)
+            self.learn_rate = tf.compat.v1.placeholder(tf.float32)
             # SGD loss
             self._loss = self._get_loss_function()
             # SGD Optimizer
-            self._optimizer = tf.train.GradientDescentOptimizer(
+            self._optimizer = tf.compat.v1.train.GradientDescentOptimizer(
                 learning_rate = self.learn_rate, name = "optimizer")
             # Get gradients for clipping
             self._gradients = self._optimizer.compute_gradients(self._loss)
             # Verify finite and real
             name = "FiniteGradientVerify"
-            grads = [(tf.verify_tensor_all_finite(
+            grads = [(tf.compat.v1.verify_tensor_all_finite(
                 g, msg = "Inf or NaN Gradients for {}".format(v.name),
                 name = name), v)
                      for g, v in self._gradients]
             # Clip gradients according to threshold
-            self._clipping_threshold = tf.placeholder(tf.float32,
+            self._clipping_threshold = tf.compat.v1.placeholder(tf.float32,
                                                       name="grad_clip_thresh")
             self._clipped_gradients = [
                 (tf.clip_by_norm(g, self._clipping_threshold), v)
@@ -163,7 +163,7 @@ class QTree (QAgent):
             self.update_op = self._optimizer.apply_gradients(
                 self._clipped_gradients, name = "update")
             # Tensorboard saving operation
-            self.summary_op = tf.summary.merge_all()
+            self.summary_op = tf.compat.v1.summary.merge_all()
 
     def _get_loss_function(self):
         """
@@ -177,12 +177,12 @@ class QTree (QAgent):
             val_loss = tf.reduce_sum(
                 tf.square(self.winner_targets - self._value),
                 name = "value_loss")
-            tf.summary.scalar("Value_loss", val_loss)
+            tf.compat.v1.summary.scalar("Value_loss", val_loss)
             # Cross entropy for policy
             prob_loss = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(
                 labels = self.prob_targets, logits = self.y[:, 1:],
                 name = "policy_loss"))
-            tf.summary.scalar("Policy_loss", prob_loss)
+            tf.compat.v1.summary.scalar("Policy_loss", prob_loss)
             # L2 Regularization
             # Initialize to zero
             self.l2 = 0.0
@@ -190,7 +190,7 @@ class QTree (QAgent):
             if self.beta is not None:
                 with tf.name_scope("regularization"):
                     self.l2 = self._l2_recurse(self.w)
-                    tf.summary.scalar("L2", self.l2)
+                    tf.compat.v1.summary.scalar("L2", self.l2)
                     beta = tf.constant(self.beta)
                     # Full loss function
                 loss = tf.add(val_loss + prob_loss, beta * tf.square(self.l2),
@@ -199,9 +199,10 @@ class QTree (QAgent):
                 # Full loss function
                 loss = tf.add(val_loss, prob_loss, name = "loss")
             # Vefify real and finite
-            loss = tf.verify_tensor_all_finite(loss, name = "FiniteVerify",
-                                               msg = "Inf or NaN loss")
-            tf.summary.scalar("Loss", loss)
+            loss = tf.compat.v1.verify_tensor_all_finite(
+                loss, name = "FiniteVerify", msg = "Inf or NaN loss"
+            )
+            tf.compat.v1.summary.scalar("Loss", loss)
             return loss
 
     def clear(self):

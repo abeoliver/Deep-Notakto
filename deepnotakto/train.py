@@ -119,9 +119,8 @@ def train_model_with_tournament_evaluation(agent, opponent, env,
         # Save the model
         agent.save(model_path)
         # Prepare console output
-        outputs = []
-        outputs.append("TIME PLACEHOLDER")
-        outputs.append("Iteration             {}".format(agent.iteration))
+        outputs = ["TIME PLACEHOLDER",
+                   "Iteration             {}".format(agent.iteration)]
 
         # Reset environment
         env.reset()
@@ -165,7 +164,7 @@ def train_model_with_tournament_evaluation(agent, opponent, env,
             return None
 
         # End training if iteration limit is passed
-        if iter_limit > 0 and agent.iteration >= iter_limit:
+        if 0 < iter_limit <= agent.iteration:
             return None
 
 

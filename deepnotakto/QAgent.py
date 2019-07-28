@@ -16,13 +16,27 @@ from deepnotakto import Agent
 from deepnotakto import Trainer
 
 
+def get_activation_function(func):
+    """ Get a tensorflow-based activation function by name """
+    func = func.lower()
+    if func == "sigmoid":
+        return tf.sigmoid
+    elif func == "tanh":
+        return tf.nn.tanh
+    elif func == "relu":
+        return tf.nn.relu
+    elif func == "swish":
+        return lambda x: tf.multiply(x, tf.sigmoid(x))
+    else:
+        return tf.identity
+
+
 class QAgent (Agent):
     """
     A Deep-Q agent
 
     Methods:
         initialize - Initialize model and tensorflow-specific attributes
-        get_activation_function - Get a desired tf-compatible activation func
         target - Calculate the target policy for a given data point
         get_action - Get the move vector to play on a given state
         get_q - Get a Q-value matrix (a square policy vector)
@@ -42,7 +56,7 @@ class QAgent (Agent):
         training_params - Change the training parameter dictionary
         change_param - Change an individual training parameter
     """
-    def __init__(self, game_size, hidden_layers, gamma = .8, beta = None,
+    def __init__(self, game_size, layers, gamma = .8, beta = None,
                  name = None, initialize = True, classifier = None,
                  iterations = 0, params = {"mode": "replay"}, max_queue = 100,
                  epsilon_func = None, temp_func = None,
@@ -52,7 +66,7 @@ class QAgent (Agent):
         Initialize a Q learning agent
 
         Args:
-            game_size: (int) Side length of the boaed
+            game_size: (int or int[]) Side length of the board
             hidden_layers: (int[]) Number of neurons in each hidden layer
             gamma: (float) Q-learning bellman equation hyperparameter
             beta: (float) L2 regularization hyperparameter
@@ -73,14 +87,13 @@ class QAgent (Agent):
         # The length of the side of the board
         self.size = game_size
         # Put together the layers
-        self.layers = [self.size ** 2] + hidden_layers + [self.size ** 2]
-        self.shape = [self.size, self.size]
+        self.layers = layers
         self.gamma = gamma
         self.beta = beta
         self.clip_thresh = 10.0
         # Get the activation function
         self.activation_func_name = activation_func
-        self.activation_func = self.get_activation_function(activation_func)
+        self.activation_func = get_activation_function(activation_func)
         self.activation_type = activation_type
         # Decide if the agent is deterministic or not
         if epsilon_func is None and temp_func is None:
@@ -135,7 +148,7 @@ class QAgent (Agent):
         if not self.initialized or force:
             # Create a tensorflow session for all processes to run in
             self._graph = tf.Graph()
-            self.session = tf.Session(graph = self._graph)
+            self.session = tf.compat.v1.Session(graph = self._graph)
             # Initialize model
             self._init_model(weights = weights, biases = biases)
             # Initialize params variables like the loss and the optimizer
@@ -143,20 +156,6 @@ class QAgent (Agent):
             # Initialize trainer (passing the agent as a parameter)
             self._init_trainer(params = params, **kwargs)
             self.initialized = True
-
-    def get_activation_function(self, func):
-        """ Get a tensorflow-based activation function by name """
-        func = func.lower()
-        if func == "sigmoid":
-            return tf.sigmoid
-        elif func == "tanh":
-            return tf.nn.tanh
-        elif func == "relu":
-            return tf.nn.relu
-        elif func == "swish":
-            return lambda x: tf.multiply(x, tf.sigmoid(x))
-        else:
-            return tf.identity
 
     def _init_trainer(self, params = None, **kwargs):
         """ Initialize a trainer object """
@@ -174,9 +173,9 @@ class QAgent (Agent):
             with tf.name_scope("model"):
                 if not self.initialized:
                     # Input placeholder
-                    self.x = tf.placeholder(tf.float32,
-                                            shape = [None, self.layers[0]],
-                                            name = "inputs")
+                    self.x = tf.compat.v1.placeholder(
+                        tf.float32, shape = [None, self.layers[0]],
+                        name = "inputs")
                     # Initialize weights
                     self._init_weights(weights)
                     # Tensorboard visualizations for weight variables
@@ -192,7 +191,7 @@ class QAgent (Agent):
                     # Output prediction vector
                     self.y = self._feed(self.x)
                     self.initialized = True
-                    self.session.run(tf.global_variables_initializer())
+                    self.session.run(tf.compat.v1.global_variables_initializer())
                 # Set node values instead of creating nodes if already init
                 else:
                     if w is not None:
@@ -204,22 +203,23 @@ class QAgent (Agent):
         """ Initialize training procedure """
         with self._graph.as_default():
             # Target placeholder
-            self.q_targets = tf.placeholder(tf.float32,
-                                            shape = [None, self.layers[0]],
-                                            name = "q_targets")
+            self.q_targets = tf.compat.v1.placeholder(
+                tf.float32, shape = [None, self.layers[0]], name = "q_targets"
+            )
             # Learning rate
-            self.learn_rate = tf.placeholder(tf.float32, name = "learn_rate")
+            self.learn_rate = tf.compat.v1.placeholder(tf.float32,
+                                                       name = "learn_rate")
             # Loss
             self._loss = self._get_loss_function()
             # Optimizer
-            self._optimizer = tf.train.GradientDescentOptimizer(
+            self._optimizer = tf.compat.v1.train.GradientDescentOptimizer(
                 learning_rate = self.learn_rate, name = "optimizer")
             # Get gradients
             self._gradients = self._optimizer.compute_gradients(self._loss)
             # Verify finite and real and save in (gradient, variable) pairs
             name = "FiniteGradientVerify"
             grads = [(
-                         tf.verify_tensor_all_finite(
+                         tf.compat.v1.verify_tensor_all_finite(
                              g,
                              msg = "Inf or NaN Gradients for {}".format(v.name),
                              name = name),
@@ -227,8 +227,9 @@ class QAgent (Agent):
                      )
                      for g, v in self._gradients]
             # Clip gradients and save in (gradient, variable) pairs
-            self._clipping_threshold = tf.placeholder(tf.float32,
-                                                      name = "grad_clip_thresh")
+            self._clipping_threshold = tf.compat.v1.placeholder(
+                tf.float32, name = "grad_clip_thresh"
+            )
             self._clipped_gradients = [(
                                            tf.clip_by_norm(
                                                g, self._clipping_threshold),
@@ -239,7 +240,7 @@ class QAgent (Agent):
             self.update_op = self._optimizer.apply_gradients(
                 self._clipped_gradients, name = "update")
             # Tensorboard
-            self.summary_op = tf.summary.merge_all()
+            self.summary_op = tf.compat.v1.summary.merge_all()
 
     def _get_loss_function(self):
         """ Get the loss function """
@@ -247,14 +248,14 @@ class QAgent (Agent):
             # Regular loss
             data_loss = tf.reduce_sum(tf.square(self.q_targets - self.y),
                                       name="data_loss")
-            tf.summary.scalar("Data_loss", data_loss)
+            tf.compat.v1.summary.scalar("Data_loss", data_loss)
             # Loss and Regularization
-            self.beta_ph = tf.placeholder(tf.float32, name="beta")
+            self.beta_ph = tf.compat.v1.placeholder(tf.float32, name="beta")
             # L2 Regularization (if turned on by a non-None beta)
             if self.beta is not None:
                 with tf.name_scope("regularization"):
                     self.l2 = self._l2_recurse(self.w)
-                    tf.summary.scalar("L2", self.l2)
+                    tf.compat.v1.summary.scalar("L2", self.l2)
                     loss = tf.reduce_mean(
                         tf.add(data_loss, self.beta_ph * self.l2),
                         name = "regularized_loss")
@@ -262,13 +263,13 @@ class QAgent (Agent):
             else:
                 loss = tf.reduce_mean(data_loss, name = "non_regularized_loss")
             # Verify that the loss is finite and not NaN
-            loss = tf.verify_tensor_all_finite(
+            loss = tf.compat.v1.verify_tensor_all_finite(
                 tf.reduce_mean(loss, name = "loss"),
                 msg = "Inf or NaN loss",
                 name = "FiniteVerify"
             )
             # Save to tensorboard summary
-            tf.summary.scalar("Loss", loss)
+            tf.compat.v1.summary.scalar("Loss", loss)
             return loss
 
     def _init_weights(self, w = None):
@@ -285,16 +286,16 @@ class QAgent (Agent):
                       for n in range(len(self.layers) - 1)]
         # Otherwise, initialize with a normal distribution
         else:
-            self.w = [tf.Variable(tf.random_normal([self.layers[n],
+            self.w = [tf.Variable(tf.random.normal([self.layers[n],
                                                     self.layers[n + 1]],
                                                    stddev = .2),
                                   name = "weights_{}".format(n))
                       for n in range(len(self.layers) - 1)]
         # Get assignment operations
-        self._weight_assign_ph = [tf.placeholder(tf.float32,
-                                                 shape = [self.layers[n],
-                                                          self.layers[n + 1]])
-                                  for n in range(len(self.layers) - 1)]
+        self._weight_assign_ph = [tf.compat.v1.placeholder(
+            tf.float32, shape = [self.layers[n], self.layers[n + 1]]
+        )
+            for n in range(len(self.layers) - 1)]
         self._weight_assign = [self.w[n].assign(self._weight_assign_ph[n])
                                for n in range(len(self.layers) - 1)]
 
@@ -315,10 +316,11 @@ class QAgent (Agent):
             self.b = [tf.Variable(tf.zeros([1, self.layers[n + 1]]),
                                   name = "biases_{}".format(n))
                       for n in range(len(self.layers) - 1)]
-        # Get assign opss
-        self._bias_assign_ph = [tf.placeholder(tf.float32,
-                                               shape = [1, self.layers[n + 1]])
-                                for n in range(len(self.layers) - 1)]
+        # Get assign ops
+        self._bias_assign_ph = [tf.compat.v1.placeholder(
+            tf.float32, shape = [1, self.layers[n + 1]]
+        )
+            for n in range(len(self.layers) - 1)]
         self._bias_assign = [self.b[n].assign(self._bias_assign_ph[n])
                              for n in range(len(self.layers) - 1)]
 
@@ -424,7 +426,9 @@ class QAgent (Agent):
         # Pass the state to the model and get array of Q-values
         return np.reshape(
             self.y.eval(session = self.session,
-                        feed_dict = {self.x: [np.reshape(state, -1)]})[0],
+                        feed_dict = {
+                            self.x: self.get_passable_state(state)
+                        })[0],
             state.shape)
 
     def get_passable_state(self, state):
@@ -436,7 +440,7 @@ class QAgent (Agent):
         Returns:
             (array or array[]) State or states fit to be passed through network
         """
-        return state
+        return [np.reshape(state, -1)]
 
     def update(self, states, targets, learn_rate = .01, beta = None):
         """
@@ -469,7 +473,7 @@ class QAgent (Agent):
 
     def duplicative_dict(self):
         """ Saveable dictionary able to replicate the agent """
-        return {"game_size": self.size, "hidden_layers": self.layers[1:-1],
+        return {"game_size": self.size, "layers": self.layers,
                 "weights": self.get_weights(), "biases": self.get_biases(),
                 "gamma": self.gamma, "name": self.name,
                 "beta": self.beta, "classifier": self.classifier,
@@ -504,11 +508,11 @@ class QAgent (Agent):
         """
         with tf.name_scope("summary"):
             with tf.name_scope(name):
-                tf.summary.scalar('norm', tf.norm(var))
-                tf.summary.scalar('max', tf.reduce_max(var))
-                tf.summary.scalar('min', tf.reduce_min(var))
+                tf.compat.v1.summary.scalar('norm', tf.norm(var))
+                tf.compat.v1.summary.scalar('max', tf.reduce_max(var))
+                tf.compat.v1.summary.scalar('min', tf.reduce_min(var))
                 # Log var as a histogram
-                tf.summary.histogram('histogram', var)
+                tf.compat.v1.summary.histogram('histogram', var)
 
     def get_layer(self, inp, layer):
         """ Passes an input through the model until a particular layer """

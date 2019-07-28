@@ -44,17 +44,17 @@ class Env (BaseEnv):
             self.rewards = rewards
 
     def without_players(self, array):
-        return _without_players(array)
+        return without_players(array)
 
     def current_player(self, state = None):
         if state is None:
             state = self.state
-        return _current_player(state)
+        return current_player(state)
 
     def legal(self, action, state = None):
         if state is None:
             state = self.state
-        return _legal(action, state)
+        return legal(action, state)
 
     def reward(self, action, state = None):
         """
@@ -74,23 +74,23 @@ class Env (BaseEnv):
         new_state = self.play_move_on_state(state, action)
 
         # Rewards based on winner
-        winner = self.winner(new_state)
-        if winner == 0:
+        winner_player = self.winner(new_state)
+        if winner_player == 0:
             return 0
-        elif winner == self.current_player(state):
+        elif winner_player == self.current_player(state):
             return self.rewards["win"]
         else:
             return self.rewards["loss"]
 
     def play_move_on_state(self, state, action):
-        self.state = _play_move_on_state(
+        self.state = play_move_on_state(
             state, action, self.current_player(state)
         )
 
     def winner(self, state = None):
         if state is None:
             state = self.state
-        return _winner(state)
+        return winner(state)
 
     def action_space(self, state = None):
         """
@@ -103,10 +103,10 @@ class Env (BaseEnv):
         """
         if state is None:
             state = self.state
-        return _action_space(state)
+        return action_space(state)
 
     def __str__(self):
-        return _print_board(self.state)
+        return display_state(self.state)
 
 
 class RandomAgent (BaseAgent):
@@ -115,19 +115,19 @@ class RandomAgent (BaseAgent):
         self.name = "Random"
 
     def get_action(self, state):
-        possible = _action_space(state)
-        player = _current_player(state)
+        possible = action_space(state)
+        player = current_player(state)
         opponent = 2 if player == 1 else 1
         not_loser = []
         # Choose a winner and identify non-losers
         for m in possible:
             # Make move temporarily
-            new_state = _play_move_on_state(copy(state), m, player)
-            winner = _winner(new_state)
+            new_state = play_move_on_state(copy(state), m, player)
+            winner_player = winner(new_state)
             # If it is a loser, do not consider
-            if winner == opponent:
+            if winner_player == opponent:
                 continue
-            elif winner == player:
+            elif winner_player == player:
                 return m
             # If neither, remember that it is a not a losing move
             not_loser.append(m)
@@ -160,7 +160,7 @@ class Human (BaseAgent):
             except ValueError:
                 print("Not a valid column")
                 continue
-            if not _legal(state, move):
+            if not legal(state, move):
                 print("Not a valid column")
                 continue
             return move
@@ -174,54 +174,61 @@ def play(a1, a2, games = 1, env_args = {}, clear_func = None):
         while True:
             if clear_func is not None:
                 clear_func()
-            _print_board(e.state)
+            display_state(e.state)
             move = players[e.current_player() - 1].get_action(e.state)
             e.play_move_on_state(e.state, move)
-            winner = e.winner()
-            if winner == 1:
+            winner_player = e.winner()
+            if winner_player == 1:
                 print("============= Player 1 wins! =============\n\n")
                 break
-            elif winner == 2:
+            elif winner_player == 2:
                 print("============= Player 2 wins! =============\n\n")
                 break
         played_games += 1
 
 
-# Utility functions
-def _action_space(state):
+# Game functions
+def action_space(state, remove_losses = False):
     available = []
     for i in range(state.shape[1]):
         if state[:, i].sum() < state.shape[0]:
             available.append(i)
+    if remove_losses:
+        final = []
+        for m in available:
+            win = winner(play_move_on_state(state, m, current_player(state)))
+            if win in [0, current_player(state)]:
+                final.append(m)
+        return m
     return available
 
-def _without_players(array):
+def without_players(array):
     return np.not_equal(array, 0).astype(int)
 
-def _current_player(state):
-    pieces = _without_players(state).sum()
+def current_player(state):
+    pieces = without_players(state).sum()
     # If there are an even number of pieces, it is player 1's turn
     if pieces % 2 == 0:
         return 1
     # Odd number of pieces, 2's turn
     return 2
 
-def _legal(state, action):
+def legal(state, action):
     if action >= state.shape[1]:
         return False
     # Get the desired column in terms of empty / full spaces
-    simple_col = _without_players(state[:, action])
+    simple_col = without_players(state[:, action])
     # If completely full, raise exception
     if np.equal(simple_col, 1).all():
         return False
     return True
 
-def _play_move_on_state(state, action, piece):
+def play_move_on_state(state, action, piece):
     # NOTE action should already be checked for legal move
     # Copy the state to avoid pythonic accidental overwrites
     state = state.copy()
     # Get the desired column in terms of empty / full spaces
-    simple_col = _without_players(state[:, action])
+    simple_col = without_players(state[:, action])
     # If completely empty, fill last slot
     if np.equal(simple_col, 0).all():
         top_of_column = state.shape[0] - 1
@@ -233,7 +240,7 @@ def _play_move_on_state(state, action, piece):
     # Return the new state
     return state
 
-def _print_board(state, col_nums = True):
+def display_state(state, col_nums = True):
     """ Conversion to string """
     out = ""
     if col_nums:
@@ -254,14 +261,14 @@ def _print_board(state, col_nums = True):
     print(out)
 
 # Functions for finding winners of Connect4
-filters = [
+_filters = [
     np.identity(4),
     np.fliplr(np.identity(4)),
     np.ones((1,4)).T,
     np.ones((1,4))
 ]
 
-def convolve(x, k):
+def _convolve(x, k):
     out_rows = x.shape[0] - k.shape[0] + 1
     out_cols = x.shape[1] - k.shape[1] + 1
     out = np.zeros((out_rows, out_cols))
@@ -272,19 +279,19 @@ def convolve(x, k):
             ).sum()
     return out
 
-def only_player(x, p):
+def _only_player(x, p):
     return np.equal(x, p).astype(int)
 
-def does_player_win(x, p):
-    p_board = only_player(x, p)
-    for f in filters:
-        if convolve(p_board, f).max() >= 4:
+def _does_player_win(x, p):
+    p_board = _only_player(x, p)
+    for f in _filters:
+        if _convolve(p_board, f).max() >= 4:
             return True
     return False
 
-def _winner(state):
-    if does_player_win(state, 1):
+def winner(state):
+    if _does_player_win(state, 1):
         return 1
-    if does_player_win(state, 2):
+    if _does_player_win(state, 2):
         return 2
     return 0
