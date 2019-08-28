@@ -2,8 +2,7 @@
 A deep-reinforcement learning approach to solving mis&egrave;re
 combinatorial games.
 This project won the 12th Grade category at the 2018 Hoosier Science and
-Engineering Fair and is progressing to the
-2018 Intel International Science and Engineering Fair in May.
+Engineering Fair and competed in the 2018 Intel International Science and Engineering Fair.
 This program was developed in conjunction with the Indiana University
 Computer Vision Lab.
 
@@ -26,28 +25,6 @@ not be matched and the hyperparameters could not be as finely tuned,
 this result suggests that misère games may be fundamentally different
 than their regular counterparts, possibly requiring different algorithms
 and approaches.
-
-### References
-Allis, L. V. (1994). Searching for solutions in games and artificial
-intelligence. Rijksuniversiteit Limburg.
-
-arXiv:1712.01815 [cs.AI]
-
-Heule, M. J., & Rothkrantz, L. J. (2007). Solving games: Dependence of
-applicable solving procedures. Science of Computer Programming, 67(1),
-105-124.
-
-Littman, M. L. (1994). Markov games as a framework for multi-agent
-reinforcement learning. In Machine Learning Proceedings 1994
-(pp. 157-163).
-
-Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., Van Den
-Driessche, G., ... & Dieleman, S. (2016). Mastering the game of Go with
-deep neural networks and tree search. Nature, 529(7587), 484-489.
-
-Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A.,
-Guez, A., ... & Chen, Y. (2017). Mastering the game of Go without human
-knowledge. Nature, 550(7676), 354.
 
 ### Introduction
 A central goal of machine learning has been to train models tabula rasa,
@@ -215,3 +192,25 @@ computational power. Also, it would be worth testing different neural
 network architectures such as convolutional neural networks, residual
 networks, and capsule networks to check the effectiveness of the
 algorthim versus the effectiveness of the model being trained.
+
+### References
+Allis, L. V. (1994). Searching for solutions in games and artificial
+intelligence. Rijksuniversiteit Limburg.
+
+arXiv:1712.01815 [cs.AI]
+
+Heule, M. J., & Rothkrantz, L. J. (2007). Solving games: Dependence of
+applicable solving procedures. Science of Computer Programming, 67(1),
+105-124.
+
+Littman, M. L. (1994). Markov games as a framework for multi-agent
+reinforcement learning. In Machine Learning Proceedings 1994
+(pp. 157-163).
+
+Silver, D., Huang, A., Maddison, C. J., Guez, A., Sifre, L., Van Den
+Driessche, G., ... & Dieleman, S. (2016). Mastering the game of Go with
+deep neural networks and tree search. Nature, 529(7587), 484-489.
+
+Silver, D., Schrittwieser, J., Simonyan, K., Antonoglou, I., Huang, A.,
+Guez, A., ... & Chen, Y. (2017). Mastering the game of Go without human
+knowledge. Nature, 550(7676), 354.
